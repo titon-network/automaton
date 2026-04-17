@@ -18,8 +18,8 @@
 //      must hold on disk; env vars just tweak runtime. (An env var that
 //      violates the schema throws — same class of loud failure as a bad file.)
 
-import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'fs';
-import { dirname } from 'path';
+import { existsSync, readFileSync } from 'fs';
+import { atomicWriteFile } from '../util/atomic-write';
 import { configPath } from './paths';
 import { ConfigSchema, LogLevelSchema, NetworkSchema, type Config } from './schema';
 
@@ -71,18 +71,7 @@ export function loadConfig(path: string = configPath()): Config {
 
 export function saveConfig(config: Config, path: string = configPath()): void {
     const validated = ConfigSchema.parse(config);
-
-    mkdirSync(dirname(path), { recursive: true });
-
-    // Atomic rename avoids half-written files if we crash mid-serialise.
-    // `.pid` suffix prevents concurrent saves from two processes clobbering
-    // each other's tmp — each writes to its own filename then renames.
-    const tmp = `${path}.${process.pid}.tmp`;
-    writeFileSync(tmp, JSON.stringify(validated, null, 2) + '\n', { mode: 0o600 });
-    // writeFileSync's mode only applies at CREATE time AND is masked by umask.
-    // Force 0600 post-hoc so operator-only perms hold regardless of umask.
-    chmodSync(tmp, 0o600);
-    renameSync(tmp, path);
+    atomicWriteFile(path, JSON.stringify(validated, null, 2) + '\n', 0o600);
 }
 
 // Narrow allow-list of env overrides. Each override validates through the same

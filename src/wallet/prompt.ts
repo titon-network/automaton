@@ -8,6 +8,16 @@
 // a TTY isn't available. Passing a password on the CLI (via `--password`)
 // is deliberately NOT supported — it would land in shell history.
 
+// NIST SP 800-63B minimum. Not strong on its own — scrypt does the real work
+// — but stops trivially bad inputs like "a" from making it to disk.
+const MIN_PASSWORD_LEN = 8;
+
+function assertPasswordLength(password: string, source: string): void {
+    if (password.length < MIN_PASSWORD_LEN) {
+        throw new Error(`${source} must be at least ${MIN_PASSWORD_LEN} characters`);
+    }
+}
+
 export interface PromptOptions {
     prompt?: string;
     /** Set to false to force interactive prompting even if env var is set. */
@@ -31,31 +41,23 @@ export async function getPasswordWithConfirmation(
     prompt = 'New password: ',
     confirmPrompt = 'Confirm password: ',
 ): Promise<string> {
-    // Env var bypasses confirmation — callers using AUTOMATON_PASSWORD have
-    // already pinned the value upstream (Docker secret, systemd credential),
-    // so there's nothing to confirm.
+    // Env var bypasses the confirmation prompt — callers using
+    // AUTOMATON_PASSWORD have already pinned the value upstream (Docker
+    // secret, systemd credential), so there's nothing to confirm.
     const fromEnv = process.env.AUTOMATON_PASSWORD;
     if (fromEnv !== undefined && fromEnv.length > 0) {
-        if (fromEnv.length < MIN_PASSWORD_LEN) {
-            throw new Error(`AUTOMATON_PASSWORD must be at least ${MIN_PASSWORD_LEN} characters`);
-        }
+        assertPasswordLength(fromEnv, 'AUTOMATON_PASSWORD');
         return fromEnv;
     }
 
     const first = await promptPassword(prompt);
-    if (first.length < MIN_PASSWORD_LEN) {
-        throw new Error(`password must be at least ${MIN_PASSWORD_LEN} characters`);
-    }
+    assertPasswordLength(first, 'password');
     const second = await promptPassword(confirmPrompt);
     if (first !== second) {
         throw new Error('passwords do not match');
     }
     return first;
 }
-
-// 8 is the NIST SP 800-63B minimum. Not strong on its own — scrypt does the
-// real work — but stops trivially bad inputs like "a" from making it to disk.
-const MIN_PASSWORD_LEN = 8;
 
 export function promptPassword(prompt: string): Promise<string> {
     return new Promise((resolve, reject) => {

@@ -28,12 +28,12 @@
 //   - scrypt's maxmem default (32 MB) is too low for N=131072 (needs ~128
 //     MB); we pass 256 MB so the default params actually run.
 
-import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from 'crypto';
-import { dirname } from 'path';
 import { z } from 'zod';
 import { walletPath } from '../config/paths';
 import { NetworkSchema, type Network } from '../config/schema';
+import { atomicWriteFile } from '../util/atomic-write';
 import { validateMnemonic } from './mnemonic';
 import { walletFromMnemonic, type AutomatonWallet } from './wallet';
 
@@ -83,6 +83,10 @@ export class KeystoreValidationError extends Error {
 }
 
 // Defaults tuned for "interactive unlock" — see security notes at top of file.
+// DEFAULT_KDF_N matches ethers.js (v6) wallet encryption default. Do NOT
+// lower this value for production use — tests override to 2^11 via the
+// `kdfN` LockOptions field, which is fine because the crypto primitives
+// exercised are identical; only the work factor differs.
 const DEFAULT_KDF_N = 131072;
 const KDF_R = 8;
 const KDF_P = 1;
@@ -163,10 +167,11 @@ export async function unlockKeystore(blob: Keystore, password: string): Promise<
 
     const wallet = await walletFromMnemonic(mnemonic, blob.network);
 
-    // The derived address should match what was stored at lock time. A
-    // mismatch means either the network field was tampered with (unlikely —
-    // it's part of the schema, but not AES-authenticated) or the wallet
-    // derivation code changed across versions. Surface loudly.
+    // The derived address should match what was stored at lock time. The
+    // network field is plaintext (not under the AES-GCM tag), so flipping
+    // testnet↔mainnet in the file would otherwise silently produce a wallet
+    // for the wrong network. This check catches that — and a contract-level
+    // derivation change in a future @ton/ton version, if that ever happens.
     const derivedAddress = wallet.address.toString({
         bounceable: false,
         testOnly: blob.network === 'testnet',
@@ -174,7 +179,9 @@ export async function unlockKeystore(blob: Keystore, password: string): Promise<
     if (derivedAddress !== blob.address) {
         throw new Error(
             `keystore integrity check failed — stored address ${blob.address} ` +
-                `does not match derived address ${derivedAddress} for network ${blob.network}`,
+                `does not match derived address ${derivedAddress} for network ${blob.network}.\n` +
+                `If you edited the keystore's 'network' field, restore it: the address ` +
+                `is deterministic from (mnemonic, network) and both sides must agree.`,
         );
     }
 
@@ -183,15 +190,7 @@ export async function unlockKeystore(blob: Keystore, password: string): Promise<
 
 export function saveKeystore(blob: Keystore, path: string = walletPath()): void {
     const validated = KeystoreSchema.parse(blob);
-    mkdirSync(dirname(path), { recursive: true });
-
-    // Same atomic-write pattern as saveConfig: write to .pid.tmp, chmod
-    // explicitly (writeFileSync's mode arg is masked by umask), rename.
-    // Prevents half-written keystores from a mid-write crash.
-    const tmp = `${path}.${process.pid}.tmp`;
-    writeFileSync(tmp, JSON.stringify(validated, null, 2) + '\n', { mode: 0o600 });
-    chmodSync(tmp, 0o600);
-    renameSync(tmp, path);
+    atomicWriteFile(path, JSON.stringify(validated, null, 2) + '\n', 0o600);
 }
 
 export function loadKeystore(path: string = walletPath()): Keystore {

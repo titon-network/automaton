@@ -29,6 +29,8 @@
         "clean": "rm -rf dist",
         "test": "jest --runInBand",
         "cli": "node dist/cli/index.js",
+        "smoke": "node dist/cli/index.js --version && node dist/cli/index.js doctor",
+        "prepublishOnly": "pnpm run clean && pnpm run build && chmod +x dist/cli/index.js && node scripts/check-shebang.mjs",
         "sync:sdks": "cd ../forgeton/sdk && pnpm run build && cd ../../kronos/sdk && pnpm run build && cd ../../automaton && pnpm install --force"
     },
     "dependencies": {

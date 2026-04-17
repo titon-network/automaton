@@ -29,6 +29,9 @@
 | Change health/readiness semantics | `src/daemon/http.ts` | `/healthz` reads `liveness()` (staleness-gated), `/readyz` reads `readiness()` (array of subchecks). Both called fresh per request |
 | Add a retry-with-backoff to any async op | `src/errors/backoff.ts` | `abortableRetry(fn, { maxAttempts, baseBackoffMs, maxBackoffMs, signal, shouldRetry })` — AbortSignal-aware so shutdown cancels retries immediately |
 | Explain a TVM exit code to an operator | `src/errors/explain.ts` | `explainExitCode(n)` returns `{code, origin, name, message, hint?}` — picks the right SDK (kronos 100-119 / forgeton 160-182 / tvm 1-100); `extractExitCode(err)` pulls it off SDK errors or parses `exit code N` out of sandbox error strings |
+| Cut a release | `scripts/release.sh <bump>` | Dry-run by default; prints the mutating plan (tests + version bump + build + tag + commit) and the next-steps for `npm publish` + `docker buildx`. Pass `--apply` to execute |
+| Build the Docker image | `Dockerfile` + `.dockerignore` | Build context is the parent dir (so sibling SDKs are visible). `docker buildx build --platform linux/amd64,linux/arm64 -t titon/automaton:X -f automaton/Dockerfile .` |
+| Install the systemd unit | `contrib/automaton.service` | Copy to `/etc/systemd/system/`, install `automaton.env.example` at `/etc/automaton.env`, fill in `AUTOMATON_PASSWORD`, `systemctl daemon-reload && systemctl enable --now automaton` |
 | Change keystore format | `src/wallet/keystore.ts` | Bump `KEYSTORE_VERSION`; store migration path in the same file |
 | Change wallet derivation | `src/wallet/wallet.ts` | V5R1 is network-aware — mainnet/testnet produce different addresses from the same mnemonic; keystore must continue to carry the network |
 | Persist a new file atomically | `src/util/atomic-write.ts` | `atomicWriteFile(path, data, mode)` — used by both config and keystore; use it for any other persistent file |
@@ -143,6 +146,13 @@ src/
     backoff.ts               # jitteredBackoff + abortableRetry — AbortSignal-aware; shared by any async op that wants bounded retry
     explain.ts               # explainExitCode + extractExitCode + formatExplanation — unified TVM-exit-code → human text
     index.ts                 # barrel
+contrib/                     # distribution artefacts bundled in the published npm tarball
+  automaton.service          # systemd unit — opinionated sandbox, User=automaton, Restart=on-failure, EXIT_LOCK_HELD preventer
+  automaton.env.example      # stub for /etc/automaton.env — AUTOMATON_PASSWORD + optional log-level / port / network overrides
+Dockerfile                   # multi-stage build: node:22-alpine builder → distroless/nodejs22-debian12 runtime; non-root user; ENTRYPOINT node dist/cli/index.js
+.dockerignore                # relative to the PARENT build context; trims node_modules, build/, .git, sibling SDK build artefacts
+scripts/
+  release.sh                 # dry-run by default: test + version-bump + prepublishOnly + smoke + tag; prints next steps for npm publish + docker push
   daemon/
     logger.ts                # createPinoLogger (redacted: password/mnemonic/privateKey/seed/secretKey) + createConsoleLogger (tests)
     loop.ts                  # abortableSleep / loopCycles (with exponential backoff) / waitForDrain — cancellable primitives
@@ -268,6 +278,18 @@ D.8 splits the execution logic into three layers:
 
 `submitExecute` on `WorkerDeps` is injectable specifically so tests can exercise the decision path without a live sandbox — production passes `defaultSubmitExecute` (the real `sendAndConfirm` + post-state verify); tests pass a no-op or a controlled-failure stub.
 
+### Distribution
+
+Three targets, each with their own sharp edges:
+
+- **npm** (`pnpm publish --access=public`). `prepublishOnly` cleans, rebuilds, chmod's `dist/cli/index.js`, and verifies the shebang survived — the common footguns for CLI packages. **Known limitation**: `kronos-sdk` + `forgeton-sdk` are `file:` deps pointing at sibling repos; npm publish expects them to be real npm packages. Publishing automaton end-to-end requires publishing both SDKs first (not yet scoped). The `prepublishOnly` pipeline still works locally; public `npm install` would currently fail until SDK publication lands.
+
+- **Docker** (`docker buildx build -f automaton/Dockerfile .`). **Build context = parent directory** so the Dockerfile can copy sibling SDK sources. Multi-stage: `node:22-alpine` builds both SDKs (sequentially — their dist/ must be populated before automaton's `pnpm install` snapshots them) + automaton itself, then `gcr.io/distroless/nodejs22-debian12:nonroot` is the runtime (UID 65532, no shell, ~90 MB). Multi-arch via `--platform linux/amd64,linux/arm64`. No `automaton init` happens at container build; operators mount a pre-initialised `TITON_HOME` volume.
+
+- **systemd** (`contrib/automaton.service`). Opinionated defaults: `User=automaton`, `Restart=on-failure`, `RestartPreventExitStatus=75` (so `EXIT_LOCK_HELD` doesn't loop), a full sandbox (`ProtectSystem=strict`, `NoNewPrivileges`, `RestrictNamespaces`, `MemoryDenyWriteExecute`), and 60s `TimeoutStopSec` to give the graceful-shutdown path its 30s drain window plus headroom. `EnvironmentFile=-/etc/automaton.env` is optional (leading `-`) so first-boot `systemctl start` doesn't fail before the operator has written the file.
+
+Release cuts go through `scripts/release.sh <bump>`, which is **dry-run by default**. It runs the test suite, bumps `package.json`, runs the real `prepublishOnly` pipeline, tags git, and prints (not executes) the `pnpm publish` / `docker buildx` / `git push --tags` next steps. Pass `--apply` to actually mutate. The dry-run-by-default posture is deliberate: releases land on muscle-memory days and we want the plan reviewed every time.
+
 ### Errors surface human text — not stack traces
 
 - **TVM exit codes** (contract reverts) translate to `{origin, name, message, hint?}` via `explainExitCode(n)` (`src/errors/explain.ts`). The CLI top-level catch prints the raw `error: <message>` line AND the explanation when it can extract a code from the error (SDK-style `exitCode`, numeric `code`, or `exit code N` substring). `kronos-sdk` owns codes 100-119, `forgeton-sdk` owns 160-182, both know TVM 1-100 — the helper tries both SDKs in order.
@@ -387,11 +409,12 @@ Production uses `DEFAULT_KDF_N = 131072` (matches ethers.js v6 wallet default, ~
 - **D.9 (event subscriber)** — done. `drainEvents(deps)` tails registry + pool tx history, decodes external-out bodies via both SDKs, dispatches to pluggable handlers; `~/.titon/automaton/state.json` checkpoint survives restarts. Built-ins: mirror refresh on `AutomatonMirrorUpdated`, self-slash alerter (log + webhook + hook), consumer watcher. 28 additional tests.
 - **D.10 (daemon)** — done. `runDaemon` composes lockfile + unlock + runtime + schema-check + handlers + timer loop + graceful shutdown. `abortableSleep` / `loopCycles` / `waitForDrain` primitives are cancellable and tested. SIGHUP reload deferred with a loud warn. 14 additional tests.
 - **D.11 (logs + metrics + health)** — done. Pino logger with structural redaction, prom-client `DaemonMetrics` bundle (counters + gauges + cycle histogram), `startHealthServer` exposes `/metrics`/`/healthz`/`/readyz` on `config.metricsHost:metricsPort`. Gauges snapshot every Nth cycle (configurable via `gaugeSnapshotEveryNTicks`). Shared `collectChainSnapshot` used by status + daemon. 28 additional tests.
-- **D.12 (error handling + backoff)** — done. `abortableRetry` + `jitteredBackoff` primitives; `explainExitCode` unifies kronos/forgeton/tvm SDK error tables; CLI top-level catch surfaces explanation under the raw error. Daemon installs `uncaughtException` + `unhandledRejection` handlers that log + trigger graceful shutdown. 24 additional tests.
-- **Up next (D.13)** — Distribution: npm publish, Docker multi-stage + multi-arch, systemd unit, release script.
-- **D.14–D.15** — see `../kronos/progress.md`.
+- **D.12 (error handling + backoff)** — done. `abortableRetry` + `jitteredBackoff` primitives; `explainExitCode` unifies kronos/forgeton/tvm SDK error tables; CLI top-level catch surfaces explanation under the raw error. Daemon installs `uncaughtException` + `unhandledRejection` handlers that log + trigger graceful shutdown. 25 additional tests.
+- **D.13 (distribution)** — done. `prepublishOnly` + `smoke` npm scripts; multi-stage `Dockerfile` (alpine builder → distroless nonroot runtime, multi-arch); `contrib/automaton.service` systemd unit with full sandbox + `automaton.env.example`; `scripts/release.sh` dry-run-by-default release helper. Known limitation: `file:` SDK deps block actual `npm publish` until the SDKs are independently published.
+- **Up next (D.14)** — Documentation: README, quickstart, ops, troubleshooting.
+- **D.15** — see `../kronos/progress.md`.
 
-Total: **291 tests** across 22 suites. Full build + test runs in ~9 s.
+Total: **292 tests** across 22 suites. Full build + test runs in ~9 s.
 
 ## Security hardening — summary
 

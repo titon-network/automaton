@@ -14,7 +14,8 @@
 
 import { existsSync } from 'fs';
 import { Command } from 'commander';
-import { configPath, loadConfig } from '../../config';
+import { configPath, loadConfig, walletPath } from '../../config';
+import { keystoreExists, loadKeystore } from '../../wallet';
 import { pkgVersion } from '../version';
 
 interface Check {
@@ -70,6 +71,19 @@ const checks: Check[] = [
             }
             const cfg = loadConfig(path);
             return `${path} — network=${cfg.network}, endpoints=${cfg.endpoints.length}`;
+        },
+    },
+    {
+        name: 'keystore',
+        run: () => {
+            const path = walletPath();
+            if (!keystoreExists(path)) {
+                return `absent at ${path} (run \`automaton init\`)`;
+            }
+            // Address + network are stored plaintext in the keystore, so we
+            // can surface them without prompting for a password.
+            const blob = loadKeystore(path);
+            return `${path} — network=${blob.network}, address=${blob.address}`;
         },
     },
 ];

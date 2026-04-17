@@ -5,3 +5,4 @@ export * from './deployment';
 export * from './runtime';
 export * from './submit';
 export * from './stake-cost';
+export * from './snapshot';

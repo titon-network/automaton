@@ -1,50 +1,61 @@
-// Minimal stdout/stderr logger for the daemon. Structured JSON-ish
-// one-liners so operators can `| jq` or grep. D.11 swaps this for
-// `pino` with redaction; the `WorkerLogger` interface shape matches
-// so callers don't need to know which backend they have.
+// Daemon logger: pino with structural redaction.
 //
-// Level filtering via the `LogLevel` from config/schema.ts — trace <
-// debug < info < warn < error. Defaults to info.
+// REDACT_PATHS covers field names matching `password`, `mnemonic`,
+// `privateKey`, `seed`, `secretKey` at top-level AND one level deep
+// (pino's `*.x` wildcard doesn't recurse). Every call site must keep
+// log-field objects FLAT or nest at most one level — do NOT pass
+// `logger.info('x', { foo: { bar: { mnemonic } } })`; pino won't catch
+// that redaction path. The existing call sites (~45 as of this
+// writing) all follow that convention; new ones should too.
+//
+// Level filtering via `LogLevel` from config/schema.ts — trace < debug
+// < info < warn < error. Defaults to info.
 
+import pino from 'pino';
 import type { LogLevel } from '../config/schema';
 import type { WorkerLogger } from '../worker/loop';
 
-const LEVEL_ORDER: Record<LogLevel, number> = {
-    trace: 0,
-    debug: 1,
-    info: 2,
-    warn: 3,
-    error: 4,
-};
+const REDACT_PATHS: readonly string[] = [
+    'password',
+    'mnemonic',
+    'privateKey',
+    'seed',
+    'secretKey',
+    '*.password',
+    '*.mnemonic',
+    '*.privateKey',
+    '*.seed',
+    '*.secretKey',
+];
 
-export interface ConsoleLoggerOptions {
+export interface PinoLoggerOptions {
     level?: LogLevel;
-    /** Process PID surfaced in every record — useful when multiple daemons run under systemd. */
-    pid?: number;
+    /** Destination stream. Defaults to process.stdout. Tests pass a writable. */
+    destination?: NodeJS.WritableStream;
 }
 
-export function createConsoleLogger(options: ConsoleLoggerOptions = {}): WorkerLogger {
-    const level = options.level ?? 'info';
-    const minOrder = LEVEL_ORDER[level];
-    const pid = options.pid ?? process.pid;
-
-    const emit = (lvl: LogLevel, msg: string, fields?: Record<string, unknown>): void => {
-        if (LEVEL_ORDER[lvl] < minOrder) return;
-        const record = {
-            ts: new Date().toISOString(),
-            level: lvl,
-            pid,
-            msg,
-            ...(fields ?? {}),
-        };
-        const stream = lvl === 'error' || lvl === 'warn' ? process.stderr : process.stdout;
-        stream.write(JSON.stringify(record) + '\n');
-    };
-
+/**
+ * Production daemon logger. Emits newline-delimited JSON to stdout so
+ * systemd-journal / docker-log-driver / promtail can pick it up.
+ * Redaction is structural — fields named `password` / `mnemonic` /
+ * `privateKey` / `seed` / `secretKey` (at top level OR one level deep)
+ * are replaced with `[Redacted]` regardless of call-site discipline.
+ */
+export function createPinoLogger(options: PinoLoggerOptions = {}): WorkerLogger {
+    const dest = options.destination ?? process.stdout;
+    const logger = pino(
+        {
+            level: options.level ?? 'info',
+            redact: { paths: [...REDACT_PATHS], censor: '[Redacted]' },
+        },
+        dest,
+    );
     return {
-        debug: (msg, fields) => emit('debug', msg, fields),
-        info: (msg, fields) => emit('info', msg, fields),
-        warn: (msg, fields) => emit('warn', msg, fields),
-        error: (msg, fields) => emit('error', msg, fields),
+        debug: (msg, fields) => logger.debug(fields ?? {}, msg),
+        info: (msg, fields) => logger.info(fields ?? {}, msg),
+        warn: (msg, fields) => logger.warn(fields ?? {}, msg),
+        error: (msg, fields) => logger.error(fields ?? {}, msg),
     };
 }
+
+export const REDACTED_LOG_PATHS: readonly string[] = REDACT_PATHS;

@@ -1,6 +1,7 @@
 import { existsSync, mkdtempSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
+import { toNano } from '@ton/core';
 import { defaultConfig } from '../src/config/schema';
 import type { Keystore } from '../src/wallet';
 import { runInit } from '../src/cli/commands/init';
@@ -61,8 +62,8 @@ describe('renderStatus (pure rendering)', () => {
 
     it('shows "not registered" when the pool returns null for this automaton', () => {
         const snapshot: ChainSnapshot = {
-            balance: '5.2',
-            automatonRegistered: false,
+            balance: toNano('5.2'),
+            automaton: null, // null = not registered
             errors: [],
         };
 
@@ -81,11 +82,15 @@ describe('renderStatus (pure rendering)', () => {
 
     it('shows stake + slashCount when the pool returns a registered automaton', () => {
         const snapshot: ChainSnapshot = {
-            balance: '3.1',
-            automatonRegistered: true,
-            automatonStake: '10.0',
-            automatonSlashCount: 2,
-            automatonRegisteredAt: '2026-04-01T12:00:00.000Z',
+            balance: toNano('3.1'),
+            automaton: {
+                schemaVersion: 1,
+                stake: toNano('10'),
+                isActive: true,
+                slashCount: 2,
+                registeredAt: Math.floor(new Date('2026-04-01T12:00:00.000Z').getTime() / 1000),
+                unstakeRequestedAt: 0,
+            },
             activeAutomatonCount: 7n,
             errors: [],
         };
@@ -100,7 +105,7 @@ describe('renderStatus (pure rendering)', () => {
 
         expect(out).toContain('status:');
         expect(out).toContain('active');
-        expect(out).toContain('10.0 TON');
+        expect(out).toContain('10 TON');
         expect(out).toContain('slashCount:');
         expect(out).toContain('2');
         expect(out).toContain('2026-04-01T12:00:00.000Z');

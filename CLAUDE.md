@@ -24,7 +24,9 @@
 | Change event polling / checkpoint | `src/worker/events.ts` + `src/worker/checkpoint.ts` | `drainEvents(deps)` walks transactions backward to the stored checkpoint; state lives in `~/.titon/automaton/state.json` (zod-validated) |
 | Change daemon startup order | `src/daemon/orchestrator.ts` | `runDaemon()` composes lockfile → keystore unlock → runtime → schema check → event handlers → main loop → graceful shutdown. Order matters and is documented at the top of the file |
 | Tune daemon timers | `src/daemon/loop.ts` | `abortableSleep`, `loopCycles`, `waitForDrain` — all AbortSignal-driven, cleanly cancellable |
-| Change daemon log format | `src/daemon/logger.ts` | `createConsoleLogger({ level })` — JSON-ish one-liners; D.11 will swap the default for pino |
+| Change daemon log format | `src/daemon/logger.ts` | `createPinoLogger({ level })` is the production default (with redacted paths). `createConsoleLogger` is a simpler alternative for tests |
+| Add a new metric | `src/daemon/metrics.ts` | Add to the one returned `DaemonMetrics` bundle; document in the `help` string; use bounded labels only |
+| Change health/readiness semantics | `src/daemon/http.ts` | `/healthz` reads `liveness()` (staleness-gated), `/readyz` reads `readiness()` (array of subchecks). Both called fresh per request |
 | Change keystore format | `src/wallet/keystore.ts` | Bump `KEYSTORE_VERSION`; store migration path in the same file |
 | Change wallet derivation | `src/wallet/wallet.ts` | V5R1 is network-aware — mainnet/testnet produce different addresses from the same mnemonic; keystore must continue to carry the network |
 | Persist a new file atomically | `src/util/atomic-write.ts` | `atomicWriteFile(path, data, mode)` — used by both config and keystore; use it for any other persistent file |
@@ -136,9 +138,11 @@ src/
     handlers.ts              # built-in event handlers: mirrorPatchHandler / selfSlashHandler (w/ webhook + onSelfSlash hook) / consumerWatchHandler
     index.ts                 # barrel
   daemon/
-    logger.ts                # createConsoleLogger({ level }) — level-filtered JSON lines; stderr for warn+error
-    loop.ts                  # abortableSleep / loopCycles / waitForDrain — cancellable primitives
-    orchestrator.ts          # runDaemon: lockfile + unlock + runtime + schema-check + handlers + main loop + graceful shutdown
+    logger.ts                # createPinoLogger (redacted: password/mnemonic/privateKey/seed/secretKey) + createConsoleLogger (tests)
+    loop.ts                  # abortableSleep / loopCycles (with exponential backoff) / waitForDrain — cancellable primitives
+    metrics.ts               # createDaemonMetrics → prom-client Registry + counters (WorkerCounters) + gauges + cycleDuration histogram
+    http.ts                  # startHealthServer — /metrics /healthz /readyz on 127.0.0.1:metricsPort
+    orchestrator.ts          # runDaemon: lockfile + unlock + runtime + schema-check + handlers + health server + main loop + gauges + graceful shutdown
     index.ts                 # barrel
       status.ts              # stub until D.6
       stake.ts               # stub until D.7 (register / increase / unstake / cancel / withdraw)
@@ -182,7 +186,10 @@ tests/
   worker-loop.spec.ts        # runWorkerCycle with injected runtime + submit stub; single-flight, failure recovery, counters, pause gate, cardinality
   checkpoint.spec.ts         # state.json round-trip, schema-version reject, malformed JSON, null-entry preservation, 0600 perms
   events.spec.ts             # extractExternalOutBodies filters; bigintHashToBase64 conversion; handler dispatch (slash / consumer / mirror patch)
-  daemon-loop.spec.ts        # abortableSleep cancellation + timer cleanup; loopCycles error-resilience + onStart + no-error-log on abort; waitForDrain timeout path
+  daemon-loop.spec.ts        # abortableSleep cancellation + timer cleanup; loopCycles error-resilience + onStart + backoff growth + cap + reset; waitForDrain timeout path
+  logger.spec.ts             # pino redaction (top-level + nested secret paths); level filter; timestamp/level emission
+  metrics.spec.ts             # prom-client registry exports every declared name; counter-label propagation; per-instance isolation
+  http.spec.ts               # /metrics content-type + body; /healthz fresh/stale/unstarted; /readyz all-ok + any-fail; 404/405/querystring routing
 package.json                 # bin: automaton; file: deps on ../kronos/sdk and ../forgeton/sdk
 tsconfig.json                # strict + isolatedModules + NodeNext + ES2022, outDir dist/
 jest.config.ts               # --runInBand, 1 GB heap, 30s timeout, globalSetup=preflight
@@ -252,6 +259,12 @@ D.8 splits the execution logic into three layers:
 3. **Daemon (D.10, not yet landed)** — wraps `runWorkerCycle` in `setInterval(pollIntervalMs)` + lockfile acquisition + SIGINT/SIGTERM handlers.
 
 `submitExecute` on `WorkerDeps` is injectable specifically so tests can exercise the decision path without a live sandbox — production passes `defaultSubmitExecute` (the real `sendAndConfirm` + post-state verify); tests pass a no-op or a controlled-failure stub.
+
+### Metrics + logs + health: one source of truth each
+
+- **Logs (`src/daemon/logger.ts`)**: `createPinoLogger` is production default; structural redaction on `password` / `mnemonic` / `privateKey` / `seed` / `secretKey` at top-level AND one level deep — `logger.info('x', { password: 'hunter2' })` becomes `{"password":"[Redacted]", …}` regardless of call-site discipline. `createConsoleLogger` stays for tests (lighter runtime; same `WorkerLogger` interface).
+- **Metrics (`src/daemon/metrics.ts`)**: every counter / gauge / histogram declared in one file with a `help` string. Returned bundle has `counters` (implements `WorkerCounters` — `runWorkerCycle` calls it unchanged), `gauges` (updated out-of-band in the orchestrator's `snapshotGauges`), `cycleDuration` histogram (wraps every tick in the orchestrator), and `registry` (passed to the HTTP server). Each `createDaemonMetrics()` returns a fresh Registry — no global state leaks between test runs.
+- **Health (`src/daemon/http.ts`)**: three endpoints on `127.0.0.1:metricsPort` (local-only by default; operators put a reverse proxy in front for remote scrape). `/metrics` serves prom-client exposition. `/healthz` returns 200 iff the last cycle completed within `2×pollIntervalMs` (floor 10s) — Kubernetes / systemd liveness probes tie to this. `/readyz` returns 200 iff every sub-check passes (lockfile held, wallet unlocked, stake active, RPC reachable); the response body lists per-check status so `curl /readyz` tells operators exactly what's red.
 
 ### Daemon orchestration is layered, signal-safe, crash-clean
 
@@ -355,10 +368,11 @@ Production uses `DEFAULT_KDF_N = 131072` (matches ethers.js v6 wallet default, ~
 - **D.8 (Kronos worker)** — done. Pure `decide()` + `AutomatonMirror` cache + `runWorkerCycle(deps)` single-iteration loop with single-flight guard and injectable `submitExecute`. 26 additional tests (all 6 decide statuses × execute/skip paths + mirror refresh/replace + loop orchestration).
 - **D.9 (event subscriber)** — done. `drainEvents(deps)` tails registry + pool tx history, decodes external-out bodies via both SDKs, dispatches to pluggable handlers; `~/.titon/automaton/state.json` checkpoint survives restarts. Built-ins: mirror refresh on `AutomatonMirrorUpdated`, self-slash alerter (log + webhook + hook), consumer watcher. 28 additional tests.
 - **D.10 (daemon)** — done. `runDaemon` composes lockfile + unlock + runtime + schema-check + handlers + timer loop + graceful shutdown. `abortableSleep` / `loopCycles` / `waitForDrain` primitives are cancellable and tested. SIGHUP reload deferred with a loud warn. 14 additional tests.
-- **Up next (D.11)** — Logs + metrics + health: swap console logger for pino (with secret redaction); prom-client registry; HTTP server on `metricsPort` exposing `/metrics` + `/healthz` + `/readyz`.
-- **D.12–D.15** — see `../kronos/progress.md`.
+- **D.11 (logs + metrics + health)** — done. Pino logger with structural redaction, prom-client `DaemonMetrics` bundle (counters + gauges + cycle histogram), `startHealthServer` exposes `/metrics`/`/healthz`/`/readyz` on `127.0.0.1:metricsPort`. Gauges snapshot every cycle (balance / stake / active / drift) via best-effort `tryAsync`. Double-SIGINT force-exits at 130; LockHeldError returns EXIT_LOCK_HELD=75. 23 additional tests.
+- **Up next (D.12)** — Error handling + backoff: unified retry/backoff helpers; explainError → human-readable alerts; uncaught-exception handler.
+- **D.13–D.15** — see `../kronos/progress.md`.
 
-Total: **239 tests** across 16 suites. Full build + test runs in ~8 s.
+Total: **262 tests** across 19 suites. Full build + test runs in ~10 s.
 
 ## Security hardening — summary
 

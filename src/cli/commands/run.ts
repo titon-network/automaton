@@ -7,7 +7,7 @@
 
 import { Command } from 'commander';
 import { LogLevelSchema } from '../../config/schema';
-import { createConsoleLogger, runDaemon } from '../../daemon';
+import { createPinoLogger, runDaemon } from '../../daemon';
 
 interface RunOptions {
     logLevel?: string;
@@ -37,7 +37,7 @@ export function registerRunCommand(program: Command): void {
                 }
                 level = parsed.data;
             }
-            const logger = level !== undefined ? createConsoleLogger({ level }) : undefined;
+            const logger = level !== undefined ? createPinoLogger({ level }) : undefined;
             const exitCode = await runDaemon(logger !== undefined ? { logger } : {});
             process.exit(exitCode);
         });

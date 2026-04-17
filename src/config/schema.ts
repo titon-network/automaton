@@ -37,7 +37,18 @@ export const ConfigSchema = z.object({
     endpoints: z.array(EndpointSchema).min(1, 'at least one endpoint is required'),
     walletVersion: z.enum(['v5r1']),
     metricsPort: z.number().int().positive().max(65535),
+    // 127.0.0.1 keeps metrics + health endpoints local by default. Docker
+    // operators publishing the port with `-p 9090:9090` need to flip this
+    // to '0.0.0.0' (or the container IP); systemd operators typically
+    // keep 127.0.0.1 + front with a reverse proxy for TLS / auth.
+    metricsHost: z.string().min(1),
     pollIntervalMs: z.number().int().min(1000),
+    // How often the daemon refreshes operator-state gauges (wallet
+    // balance, stake, drift counters). Pool state drifts slowly; 6 ×
+    // pollIntervalMs (~60 s at the default 10 s tick) is plenty for
+    // Grafana alerting AND keeps toncenter-public inside its 1 req/s
+    // budget. Set to 1 to snapshot every tick.
+    gaugeSnapshotEveryNTicks: z.number().int().positive(),
     alertWebhookUrl: z.string().url().optional(),
     maxGasPerExecute: TonAmount,
     minFreeBalance: TonAmount,
@@ -66,7 +77,9 @@ export function defaultConfig(network: Network): Config {
         endpoints: DEFAULT_ENDPOINTS[network],
         walletVersion: 'v5r1',
         metricsPort: 9090,
+        metricsHost: '127.0.0.1',
         pollIntervalMs: 10_000,
+        gaugeSnapshotEveryNTicks: 6,
         maxGasPerExecute: '0.5',
         minFreeBalance: '2.0',
         logLevel: 'info',

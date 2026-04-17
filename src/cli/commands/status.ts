@@ -22,96 +22,14 @@ import type { Keystore } from '../../wallet';
 import {
     DeploymentNotAvailableError,
     buildChainRuntime,
+    collectChainSnapshot,
     describeLock,
     type ChainRuntime,
+    type ChainSnapshot,
 } from '../../chain';
 import { pkgVersion } from '../version';
 
-export interface ChainSnapshot {
-    balance?: string;
-    automatonRegistered?: boolean;
-    automatonStake?: string;
-    automatonSlashCount?: number;
-    automatonRegisteredAt?: string;
-    activeAutomatonCount?: bigint;
-    syncesReceived?: bigint;
-    slashesRequested?: bigint;
-    registryStorageVersion?: number;
-    poolStorageVersion?: number;
-    errors: string[];
-}
-
-async function tryAsync<T>(
-    label: string,
-    errors: string[],
-    fn: () => Promise<T>,
-): Promise<T | undefined> {
-    try {
-        return await fn();
-    } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        errors.push(`${label}: ${message}`);
-        return undefined;
-    }
-}
-
-async function collectChainSnapshot(
-    runtime: ChainRuntime,
-    walletAddr: Address,
-): Promise<ChainSnapshot> {
-    const errors: string[] = [];
-
-    // Preflight probe: one cheap RPC before fanning out. If this fails,
-    // every subsequent parallel call would independently exhaust its own
-    // retry budget (6 attempts × N endpoints × backoff = minutes of hang).
-    // Bail to a single "chain unreachable" error instead.
-    try {
-        await runtime.client.call((c) => c.getMasterchainInfo());
-    } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        errors.push(`chain unreachable: ${message}`);
-        return { errors };
-    }
-
-    const [
-        balance,
-        automaton,
-        activeCount,
-        syncesReceived,
-        slashesRequested,
-        registrySchema,
-        poolSchema,
-    ] = await Promise.all([
-        tryAsync('balance', errors, () => runtime.client.call((c) => c.getBalance(walletAddr))),
-        tryAsync('automaton', errors, () => runtime.pool.getAutomaton(walletAddr)),
-        tryAsync('automaton count', errors, () => runtime.pool.getAutomatonCount()),
-        tryAsync('syncesReceived', errors, () => runtime.registry.getSyncesReceived()),
-        tryAsync('slashesRequested', errors, () => runtime.registry.getSlashesRequested()),
-        tryAsync('registry schema', errors, () => runtime.registry.getStorageVersion()),
-        tryAsync('pool schema', errors, () => runtime.pool.getStorageVersion()),
-    ]);
-
-    const snapshot: ChainSnapshot = { errors };
-    if (balance !== undefined) snapshot.balance = fromNano(balance);
-    if (automaton !== undefined) {
-        if (automaton === null) {
-            snapshot.automatonRegistered = false;
-        } else {
-            snapshot.automatonRegistered = automaton.isActive;
-            snapshot.automatonStake = fromNano(automaton.stake);
-            snapshot.automatonSlashCount = automaton.slashCount;
-            snapshot.automatonRegisteredAt = new Date(
-                automaton.registeredAt * 1000,
-            ).toISOString();
-        }
-    }
-    if (activeCount !== undefined) snapshot.activeAutomatonCount = activeCount;
-    if (syncesReceived !== undefined) snapshot.syncesReceived = syncesReceived;
-    if (slashesRequested !== undefined) snapshot.slashesRequested = slashesRequested;
-    if (registrySchema !== undefined) snapshot.registryStorageVersion = registrySchema;
-    if (poolSchema !== undefined) snapshot.poolStorageVersion = poolSchema;
-    return snapshot;
-}
+export { type ChainSnapshot };
 
 function formatRow(label: string, value: string): string {
     return `    ${label.padEnd(22, ' ')} ${value}\n`;
@@ -141,28 +59,29 @@ export function renderStatus(details: {
     out.push(`  Wallet\n`);
     out.push(formatRow('network:', keystore.network));
     out.push(formatRow('address:', keystore.address));
-    out.push(formatRow('balance:', snapshot?.balance !== undefined ? `${snapshot.balance} TON` : '(unavailable)'));
+    out.push(
+        formatRow(
+            'balance:',
+            snapshot?.balance !== undefined ? `${fromNano(snapshot.balance)} TON` : '(unavailable)',
+        ),
+    );
     out.push('\n');
 
     out.push(`  Automaton\n`);
     if (snapshot === undefined) {
         out.push(formatRow('status:', '(unavailable — no chain connection)'));
-    } else if (snapshot.automatonRegistered === undefined) {
+    } else if (snapshot.automaton === undefined) {
         out.push(formatRow('status:', '(unavailable)'));
-    } else if (!snapshot.automatonRegistered && snapshot.automatonStake === undefined) {
+    } else if (snapshot.automaton === null) {
         out.push(formatRow('status:', 'not registered — run `automaton stake register`'));
     } else {
-        const activeLabel = snapshot.automatonRegistered ? 'active' : 'inactive';
-        out.push(formatRow('status:', activeLabel));
-        if (snapshot.automatonStake !== undefined) {
-            out.push(formatRow('stake:', `${snapshot.automatonStake} TON`));
-        }
-        if (snapshot.automatonSlashCount !== undefined) {
-            out.push(formatRow('slashCount:', String(snapshot.automatonSlashCount)));
-        }
-        if (snapshot.automatonRegisteredAt !== undefined) {
-            out.push(formatRow('registered at:', snapshot.automatonRegisteredAt));
-        }
+        const info = snapshot.automaton;
+        out.push(formatRow('status:', info.isActive ? 'active' : 'inactive'));
+        out.push(formatRow('stake:', `${fromNano(info.stake)} TON`));
+        out.push(formatRow('slashCount:', String(info.slashCount)));
+        out.push(
+            formatRow('registered at:', new Date(info.registeredAt * 1000).toISOString()),
+        );
     }
     if (snapshot?.activeAutomatonCount !== undefined) {
         out.push(formatRow('pool active count:', String(snapshot.activeAutomatonCount)));
@@ -252,7 +171,9 @@ export async function runStatus(): Promise<string> {
     let snapshot: ChainSnapshot | undefined;
     if (runtime !== undefined) {
         const walletAddr = Address.parse(keystore.address);
-        snapshot = await collectChainSnapshot(runtime, walletAddr);
+        snapshot = await collectChainSnapshot(runtime, walletAddr, {
+            includeSchema: true,
+        });
     }
 
     return renderStatus({ config, keystore, runtime, deploymentUnavailable, snapshot });

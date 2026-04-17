@@ -17,6 +17,9 @@
 | Send a tx from the automaton wallet | `src/chain/submit.ts` | `senderFor(client, wallet)` builds the Sender; `sendAndConfirm(...)` wraps the send with seqno-advance polling + explorer URL; `waitForSeqnoAdvance` is the reusable core |
 | Size a pool message | `src/chain/stake-cost.ts` | `registerValue` / `increaseStakeValue` / `requestUnstakeValue` / `finalizeUnstakeValue` / `cancelUnstakeValue` match the on-chain floors |
 | Add a stake subcommand | `src/cli/commands/stake.ts` | Thread it through the shared `loadContext` → pre-state validation → `submit()` helper so the progress output + error handling stays uniform |
+| Change the Kronos decide tree | `src/worker/decide.ts` | Pure function `decide(input) → { action, reason, ... }`; add a `DecisionReason` tag and update the test matrix in `decide.spec.ts` |
+| Touch the worker poll loop | `src/worker/loop.ts` | `runWorkerCycle(deps)` does one iteration — ensure mirror freshness, iterate jobs, decide, submit. `submitExecute` is injectable for tests |
+| Change mirror caching | `src/worker/mirror.ts` | `AutomatonMirror.ensureFresh()` refreshes on count change; `replace()` is the hook for D.9's event-driven incremental updates |
 | Change keystore format | `src/wallet/keystore.ts` | Bump `KEYSTORE_VERSION`; store migration path in the same file |
 | Change wallet derivation | `src/wallet/wallet.ts` | V5R1 is network-aware — mainnet/testnet produce different addresses from the same mnemonic; keystore must continue to carry the network |
 | Persist a new file atomically | `src/util/atomic-write.ts` | `atomicWriteFile(path, data, mode)` — used by both config and keystore; use it for any other persistent file |
@@ -118,6 +121,11 @@ src/
       init.ts                # interactive + flag-driven first-run setup (network, new/import wallet, password, write config+keystore)
       status.ts              # read-only operator snapshot (balance + automaton info + drift counters + lockfile)
       stake.ts               # register / increase / request-unstake / cancel-unstake / withdraw — each unlocks the wallet, pre-checks state, submits + waits for seqno advance
+  worker/
+    decide.ts                # pure decision engine: job state × window × assignment → execute|skip + reason tag
+    mirror.ts                # AutomatonMirror cache (refresh on count change; replace hook for D.9 event-driven patching)
+    loop.ts                  # runWorkerCycle(deps) — one poll iteration; single-flight via Set<bigint>; submitExecute injectable for tests
+    index.ts                 # barrel
       status.ts              # stub until D.6
       stake.ts               # stub until D.7 (register / increase / unstake / cancel / withdraw)
       run.ts                 # stub until D.10 (daemon)
@@ -155,7 +163,9 @@ tests/
   deployment.spec.ts         # testnet resolves to KRONOS_TESTNET; mainnet throws DeploymentNotAvailableError
   status.spec.ts             # renderStatus pure-rendering cases + runStatus "no install" rejection + mainnet no-chain path
   stake-cost.spec.ts         # pure math for all five value calculators + willCrossInactive edge cases
-  submit.spec.ts             # waitForSeqnoAdvance poll/advance/timeout + explorer URL builders
+  submit.spec.ts             # waitForSeqnoAdvance poll/advance/timeout + pickWalletTx attribution + explorer URLs
+  decide.spec.ts             # decision-tree coverage: every execute and skip reason, across primary/fallback/too-early/too-late/expired/inactive/underfunded
+  worker-loop.spec.ts        # runWorkerCycle with injected runtime + submit stub; single-flight, failure recovery, counters, mirror cache behaviour
 package.json                 # bin: automaton; file: deps on ../kronos/sdk and ../forgeton/sdk
 tsconfig.json                # strict + isolatedModules + NodeNext + ES2022, outDir dist/
 jest.config.ts               # --runInBand, 1 GB heap, 30s timeout, globalSetup=preflight
@@ -213,6 +223,22 @@ Output is colour-coded on a TTY (green/yellow/red/dim) and plain text otherwise 
 `automaton status` builds the same `ChainRuntime` as doctor and queries seven pieces of state in parallel: wallet balance, automaton info, active-automaton-count, both drift counters, and both schema versions. Each call is wrapped in a `tryAsync` helper that pushes failure messages onto a per-run `errors: string[]` array. A dead RPC surfaces as "balance: ECONNRESET" in a footer — the operator still sees everything else, which is the whole point of running `status` during an outage.
 
 The pool's `getAutomaton(walletAddr)` returns `null` for "not registered" and the full struct otherwise — we branch on that to show either "not registered — run `automaton stake register`" or the active/inactive + stake + slashCount triple.
+
+### Worker decide is pure; loop is I/O; daemon is a timer
+
+D.8 splits the execution logic into three layers:
+
+1. **`decide(input)` (`src/worker/decide.ts`)** — pure function. Given a job's state + registry config + mirror snapshot + "me" + `now`, returns `{ action: 'execute' | 'skip', reason, detail, window, assigned }`. Every decision path has a machine-readable `reason` tag so metrics (D.11) and logs can slice by it without parsing strings.
+
+2. **`runWorkerCycle(deps)` (`src/worker/loop.ts`)** — one poll iteration. Refreshes the mirror, fetches registry config + jobCount in parallel, iterates `[0, jobCount)`, runs `decide`, and submits `Execute` for every "execute" decision. Single-flight via a `Set<bigint>` keyed on jobId ensures a slow RPC doesn't let the next tick race into a double-submit. Every RPC call is wrapped so a per-job fetch failure doesn't abort the whole cycle.
+
+3. **Daemon (D.10, not yet landed)** — wraps `runWorkerCycle` in `setInterval(pollIntervalMs)` + lockfile acquisition + SIGINT/SIGTERM handlers.
+
+`submitExecute` on `WorkerDeps` is injectable specifically so tests can exercise the decision path without a live sandbox — production passes `defaultSubmitExecute` (the real `sendAndConfirm` + post-state verify); tests pass a no-op or a controlled-failure stub.
+
+### Mirror cache: refresh on count, replace on event
+
+`AutomatonMirror.ensureFresh()` reads `pool.getAutomatonCount()` first and skips the per-slot re-fetch if the count matches the last snapshot. The assumption is: swap-and-pop operations on the registry's dense mirror DO preserve the count but CAN move addresses between slots, which would leave our cached mirror slightly stale. D.8 accepts that drift (wrong-slot Execute just fails the tx; the next cycle fixes it); D.9 will tail `AutomatonMirrorUpdated` events and patch via `mirror.replace(...)` for exact consistency.
 
 ### Stake subcommands pre-check on-chain state before sending
 
@@ -278,10 +304,11 @@ Production uses `DEFAULT_KDF_N = 131072` (matches ethers.js v6 wallet default, ~
 - **D.5 (init command)** — done. Interactive + flag-driven first-run setup: network + new/import wallet + password + keystore + config, all idempotent. 17 additional tests (plus a non-TTY CLI smoke test).
 - **D.6 (status + doctor expansion)** — done. Chain runtime builder + deployment resolver; doctor gains RPC-reachable / balance / schema-match / consumer-admitted / lockfile checks (colour-coded, skip-aware); `automaton status` renders a full operator snapshot with best-effort chain reads. 13 additional tests.
 - **D.7 (stake lifecycle)** — done. Five subcommands (register / increase / request-unstake / cancel-unstake / withdraw) sharing one `submit()` helper: unlock wallet, pre-check on-chain state, size the pool message, send + wait for seqno advance, print tx hash + explorer URL. 22 additional tests (stake-cost math + waitForSeqnoAdvance with injected sleep/now).
-- **Up next (D.8)** — Kronos worker: poll loop, mirror snapshot, assignment decision, execute submission.
-- **D.9–D.15** — see `../kronos/progress.md`.
+- **D.8 (Kronos worker)** — done. Pure `decide()` + `AutomatonMirror` cache + `runWorkerCycle(deps)` single-iteration loop with single-flight guard and injectable `submitExecute`. 26 additional tests (all 6 decide statuses × execute/skip paths + mirror refresh/replace + loop orchestration).
+- **Up next (D.9)** — Mirror sync + slash watcher: tail `AutomatonMirrorUpdated` events to incrementally patch the mirror; monitor `AutomatonSlashed` to log + surface slashes.
+- **D.10–D.15** — see `../kronos/progress.md`.
 
-Total: **164 tests** across 11 suites. Full build + test runs in ~8 s.
+Total: **195 tests** across 13 suites. Full build + test runs in ~7 s.
 
 ## Security hardening — summary
 

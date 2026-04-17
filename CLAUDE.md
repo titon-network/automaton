@@ -411,8 +411,8 @@ Production uses `DEFAULT_KDF_N = 131072` (matches ethers.js v6 wallet default, ~
 - **D.11 (logs + metrics + health)** — done. Pino logger with structural redaction, prom-client `DaemonMetrics` bundle (counters + gauges + cycle histogram), `startHealthServer` exposes `/metrics`/`/healthz`/`/readyz` on `config.metricsHost:metricsPort`. Gauges snapshot every Nth cycle (configurable via `gaugeSnapshotEveryNTicks`). Shared `collectChainSnapshot` used by status + daemon. 28 additional tests.
 - **D.12 (error handling + backoff)** — done. `abortableRetry` + `jitteredBackoff` primitives; `explainExitCode` unifies kronos/forgeton/tvm SDK error tables; CLI top-level catch surfaces explanation under the raw error. Daemon installs `uncaughtException` + `unhandledRejection` handlers that log + trigger graceful shutdown. 25 additional tests.
 - **D.13 (distribution)** — done. `prepublishOnly` + `smoke` npm scripts; multi-stage `Dockerfile` (alpine builder → distroless nonroot runtime, multi-arch); `contrib/automaton.service` systemd unit with full sandbox + `automaton.env.example`; `scripts/release.sh` dry-run-by-default release helper. Known limitation: `file:` SDK deps block actual `npm publish` until the SDKs are independently published.
-- **Up next (D.14)** — Documentation: README, quickstart, ops, troubleshooting.
-- **D.15** — see `../kronos/progress.md`.
+- **D.14 (documentation)** — done. Operator-focused `README.md`; `docs/quickstart.md` (5-min testnet walk-through); `docs/ops.md` (systemd + Docker + key rotation + upgrade + backup + multi-region); `docs/troubleshooting.md` (every exit code + every common init/stake/run/preflight failure); `AGENTS.md` (AI-navigable quick reference matching kronos-sdk pattern).
+- **Up next (D.15)** — Testing + testnet rehearsal (sandbox integration tests + 24 h testnet burn-in).
 
 Total: **292 tests** across 22 suites. Full build + test runs in ~9 s.
 

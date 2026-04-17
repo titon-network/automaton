@@ -22,6 +22,9 @@
 | Change mirror caching | `src/worker/mirror.ts` | `AutomatonMirror.ensureFresh()` refreshes on count change; `replace()` is the hook for D.9's event-driven incremental updates |
 | Add an event handler | `src/worker/handlers.ts` | Write a factory returning `EventHandler`; `onRegistry` / `onPool` callbacks receive decoded SDK events + `TxContext`. `drainEvents` orchestrates dispatch |
 | Change event polling / checkpoint | `src/worker/events.ts` + `src/worker/checkpoint.ts` | `drainEvents(deps)` walks transactions backward to the stored checkpoint; state lives in `~/.titon/automaton/state.json` (zod-validated) |
+| Change daemon startup order | `src/daemon/orchestrator.ts` | `runDaemon()` composes lockfile → keystore unlock → runtime → schema check → event handlers → main loop → graceful shutdown. Order matters and is documented at the top of the file |
+| Tune daemon timers | `src/daemon/loop.ts` | `abortableSleep`, `loopCycles`, `waitForDrain` — all AbortSignal-driven, cleanly cancellable |
+| Change daemon log format | `src/daemon/logger.ts` | `createConsoleLogger({ level })` — JSON-ish one-liners; D.11 will swap the default for pino |
 | Change keystore format | `src/wallet/keystore.ts` | Bump `KEYSTORE_VERSION`; store migration path in the same file |
 | Change wallet derivation | `src/wallet/wallet.ts` | V5R1 is network-aware — mainnet/testnet produce different addresses from the same mnemonic; keystore must continue to carry the network |
 | Persist a new file atomically | `src/util/atomic-write.ts` | `atomicWriteFile(path, data, mode)` — used by both config and keystore; use it for any other persistent file |
@@ -123,6 +126,7 @@ src/
       init.ts                # interactive + flag-driven first-run setup (network, new/import wallet, password, write config+keystore)
       status.ts              # read-only operator snapshot (balance + automaton info + drift counters + lockfile)
       stake.ts               # register / increase / request-unstake / cancel-unstake / withdraw — each unlocks the wallet, pre-checks state, submits + waits for seqno advance
+      run.ts                 # thin wrapper → src/daemon/orchestrator.ts runDaemon; --log-level override
   worker/
     decide.ts                # pure decision engine: job state × window × assignment → execute|skip + reason tag
     mirror.ts                # AutomatonMirror cache (refresh on count change; replace hook for event-driven patching)
@@ -130,6 +134,11 @@ src/
     checkpoint.ts            # state.json persistence — zod-validated (lt, hash) per address; atomicWriteFile
     events.ts                # drainEvents(deps) — pages txs backward to checkpoint; decodes external-out bodies via both SDKs; dispatches
     handlers.ts              # built-in event handlers: mirrorPatchHandler / selfSlashHandler (w/ webhook + onSelfSlash hook) / consumerWatchHandler
+    index.ts                 # barrel
+  daemon/
+    logger.ts                # createConsoleLogger({ level }) — level-filtered JSON lines; stderr for warn+error
+    loop.ts                  # abortableSleep / loopCycles / waitForDrain — cancellable primitives
+    orchestrator.ts          # runDaemon: lockfile + unlock + runtime + schema-check + handlers + main loop + graceful shutdown
     index.ts                 # barrel
       status.ts              # stub until D.6
       stake.ts               # stub until D.7 (register / increase / unstake / cancel / withdraw)
@@ -173,6 +182,7 @@ tests/
   worker-loop.spec.ts        # runWorkerCycle with injected runtime + submit stub; single-flight, failure recovery, counters, pause gate, cardinality
   checkpoint.spec.ts         # state.json round-trip, schema-version reject, malformed JSON, null-entry preservation, 0600 perms
   events.spec.ts             # extractExternalOutBodies filters; bigintHashToBase64 conversion; handler dispatch (slash / consumer / mirror patch)
+  daemon-loop.spec.ts        # abortableSleep cancellation + timer cleanup; loopCycles error-resilience + onStart + no-error-log on abort; waitForDrain timeout path
 package.json                 # bin: automaton; file: deps on ../kronos/sdk and ../forgeton/sdk
 tsconfig.json                # strict + isolatedModules + NodeNext + ES2022, outDir dist/
 jest.config.ts               # --runInBand, 1 GB heap, 30s timeout, globalSetup=preflight
@@ -242,6 +252,26 @@ D.8 splits the execution logic into three layers:
 3. **Daemon (D.10, not yet landed)** — wraps `runWorkerCycle` in `setInterval(pollIntervalMs)` + lockfile acquisition + SIGINT/SIGTERM handlers.
 
 `submitExecute` on `WorkerDeps` is injectable specifically so tests can exercise the decision path without a live sandbox — production passes `defaultSubmitExecute` (the real `sendAndConfirm` + post-state verify); tests pass a no-op or a controlled-failure stub.
+
+### Daemon orchestration is layered, signal-safe, crash-clean
+
+`runDaemon` (`src/daemon/orchestrator.ts`) is the single entry point for `automaton run`. It composes every prior-phase primitive in a strict order:
+
+1. Load config + keystore (fail fast on absent).
+2. Acquire lockfile — second daemon exits here with `LockHeldError`.
+3. Unlock wallet (password prompt or `AUTOMATON_PASSWORD`).
+4. Build chain runtime (`FailoverTonClient` + opened contracts).
+5. Startup schema-check via `checkSchemaVersions` — refuses to start on drift.
+6. Load checkpoint (`state.json`) — resume from last-processed `(lt, hash)`.
+7. Wire handlers (mirror patcher, self-slash alert, consumer watcher).
+8. Install SIGTERM/SIGINT/SIGHUP handlers (single shared `AbortController`).
+9. Run `loopCycles`: per tick drain events → save checkpoint → `runWorkerCycle` → sleep.
+10. On abort: `waitForDrain(inFlight.size === 0, 30s)` → final `saveCheckpointState` → exit 0.
+11. `finally { releaseLock() }` — lockfile release survives crashes, uncaught aborts, signal storms.
+
+All cancellation goes through one `AbortController`. `abortableSleep` clears its timer on abort (no leaked handles). `loopCycles` never lets a tick throw abort the loop — errors log at `error` and the next tick fires. SIGHUP is deliberately a warn-and-ignore today; config reload without restart is D.11+ scope.
+
+Tests inject `externalAbort: AbortSignal` so sandbox tests (D.15) can drive shutdown deterministically instead of signaling the host process.
 
 ### Event drain + checkpoint survive restarts
 
@@ -324,10 +354,11 @@ Production uses `DEFAULT_KDF_N = 131072` (matches ethers.js v6 wallet default, ~
 - **D.7 (stake lifecycle)** — done. Five subcommands (register / increase / request-unstake / cancel-unstake / withdraw) sharing one `submit()` helper: unlock wallet, pre-check on-chain state, size the pool message, send + wait for seqno advance, print tx hash + explorer URL. 22 additional tests (stake-cost math + waitForSeqnoAdvance with injected sleep/now).
 - **D.8 (Kronos worker)** — done. Pure `decide()` + `AutomatonMirror` cache + `runWorkerCycle(deps)` single-iteration loop with single-flight guard and injectable `submitExecute`. 26 additional tests (all 6 decide statuses × execute/skip paths + mirror refresh/replace + loop orchestration).
 - **D.9 (event subscriber)** — done. `drainEvents(deps)` tails registry + pool tx history, decodes external-out bodies via both SDKs, dispatches to pluggable handlers; `~/.titon/automaton/state.json` checkpoint survives restarts. Built-ins: mirror refresh on `AutomatonMirrorUpdated`, self-slash alerter (log + webhook + hook), consumer watcher. 28 additional tests.
-- **Up next (D.10)** — `automaton run` daemon: orchestrator (lockfile + unlock + client + worker + event loop), SIGTERM/SIGINT graceful shutdown, SIGHUP config reload.
-- **D.11–D.15** — see `../kronos/progress.md`.
+- **D.10 (daemon)** — done. `runDaemon` composes lockfile + unlock + runtime + schema-check + handlers + timer loop + graceful shutdown. `abortableSleep` / `loopCycles` / `waitForDrain` primitives are cancellable and tested. SIGHUP reload deferred with a loud warn. 14 additional tests.
+- **Up next (D.11)** — Logs + metrics + health: swap console logger for pino (with secret redaction); prom-client registry; HTTP server on `metricsPort` exposing `/metrics` + `/healthz` + `/readyz`.
+- **D.12–D.15** — see `../kronos/progress.md`.
 
-Total: **223 tests** across 15 suites. Full build + test runs in ~8 s.
+Total: **239 tests** across 16 suites. Full build + test runs in ~8 s.
 
 ## Security hardening — summary
 

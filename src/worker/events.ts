@@ -28,7 +28,7 @@ import { decodeEvents as decodeKronosEvents, type KronosEvent } from 'kronos-sdk
 import { decodeEvents as decodeForgetonEvents, type ForgetonEvent } from 'forgeton-sdk';
 import type { ChainRuntime } from '../chain';
 import { CheckpointStateError } from './checkpoint';
-import type { WorkerLogger } from './loop';
+import { SILENT_LOGGER, type WorkerLogger } from './loop';
 import {
     getCheckpoint,
     withCheckpoint,
@@ -79,13 +79,6 @@ export interface DrainEventsResult {
 // can override via drainEvents deps.
 const DEFAULT_PAGE_SIZE = 50;
 const DEFAULT_MAX_PAGES = 10;
-
-const SILENT_LOGGER: WorkerLogger = {
-    debug: () => {},
-    info: () => {},
-    warn: () => {},
-    error: () => {},
-};
 
 /**
  * Run one drain pass against both contracts. Returns the updated

@@ -58,10 +58,12 @@ describe('automaton CLI scaffold', () => {
         expect(stdout).toContain('kronos-sdk resolves');
     });
 
-    it('run stub exits non-zero with a "not implemented" message', () => {
-        const { stdout, status } = run(['run']);
+    it('run without install exits non-zero with a pointer to init', () => {
+        // No TITON_HOME override → runDaemon fails at loadConfig with
+        // ConfigNotFoundError. Verifies the error is actionable.
+        const { stdout, status } = run(['run'], { TITON_HOME: '/tmp/titon-fresh-for-run-spec' });
         expect(status).not.toBe(0);
-        expect(stdout).toContain('not implemented yet');
+        expect(stdout).toMatch(/config not found|automaton init/);
     });
 
     it('status without install exits non-zero with a pointer to init', () => {

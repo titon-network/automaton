@@ -54,7 +54,7 @@ export interface WorkerLogger {
     error(message: string, fields?: Record<string, unknown>): void;
 }
 
-const SILENT_LOGGER: WorkerLogger = {
+export const SILENT_LOGGER: WorkerLogger = {
     debug: () => {},
     info: () => {},
     warn: () => {},

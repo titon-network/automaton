@@ -20,6 +20,8 @@
 | Change the Kronos decide tree | `src/worker/decide.ts` | Pure function `decide(input) → { action, reason, ... }`; add a `DecisionReason` tag and update the test matrix in `decide.spec.ts` |
 | Touch the worker poll loop | `src/worker/loop.ts` | `runWorkerCycle(deps)` does one iteration — ensure mirror freshness, iterate jobs, decide, submit. `submitExecute` is injectable for tests |
 | Change mirror caching | `src/worker/mirror.ts` | `AutomatonMirror.ensureFresh()` refreshes on count change; `replace()` is the hook for D.9's event-driven incremental updates |
+| Add an event handler | `src/worker/handlers.ts` | Write a factory returning `EventHandler`; `onRegistry` / `onPool` callbacks receive decoded SDK events + `TxContext`. `drainEvents` orchestrates dispatch |
+| Change event polling / checkpoint | `src/worker/events.ts` + `src/worker/checkpoint.ts` | `drainEvents(deps)` walks transactions backward to the stored checkpoint; state lives in `~/.titon/automaton/state.json` (zod-validated) |
 | Change keystore format | `src/wallet/keystore.ts` | Bump `KEYSTORE_VERSION`; store migration path in the same file |
 | Change wallet derivation | `src/wallet/wallet.ts` | V5R1 is network-aware — mainnet/testnet produce different addresses from the same mnemonic; keystore must continue to carry the network |
 | Persist a new file atomically | `src/util/atomic-write.ts` | `atomicWriteFile(path, data, mode)` — used by both config and keystore; use it for any other persistent file |
@@ -123,8 +125,11 @@ src/
       stake.ts               # register / increase / request-unstake / cancel-unstake / withdraw — each unlocks the wallet, pre-checks state, submits + waits for seqno advance
   worker/
     decide.ts                # pure decision engine: job state × window × assignment → execute|skip + reason tag
-    mirror.ts                # AutomatonMirror cache (refresh on count change; replace hook for D.9 event-driven patching)
+    mirror.ts                # AutomatonMirror cache (refresh on count change; replace hook for event-driven patching)
     loop.ts                  # runWorkerCycle(deps) — one poll iteration; single-flight via Set<bigint>; submitExecute injectable for tests
+    checkpoint.ts            # state.json persistence — zod-validated (lt, hash) per address; atomicWriteFile
+    events.ts                # drainEvents(deps) — pages txs backward to checkpoint; decodes external-out bodies via both SDKs; dispatches
+    handlers.ts              # built-in event handlers: mirrorPatchHandler / selfSlashHandler (w/ webhook + onSelfSlash hook) / consumerWatchHandler
     index.ts                 # barrel
       status.ts              # stub until D.6
       stake.ts               # stub until D.7 (register / increase / unstake / cancel / withdraw)
@@ -165,7 +170,9 @@ tests/
   stake-cost.spec.ts         # pure math for all five value calculators + willCrossInactive edge cases
   submit.spec.ts             # waitForSeqnoAdvance poll/advance/timeout + pickWalletTx attribution + explorer URLs
   decide.spec.ts             # decision-tree coverage: every execute and skip reason, across primary/fallback/too-early/too-late/expired/inactive/underfunded
-  worker-loop.spec.ts        # runWorkerCycle with injected runtime + submit stub; single-flight, failure recovery, counters, mirror cache behaviour
+  worker-loop.spec.ts        # runWorkerCycle with injected runtime + submit stub; single-flight, failure recovery, counters, pause gate, cardinality
+  checkpoint.spec.ts         # state.json round-trip, schema-version reject, malformed JSON, null-entry preservation, 0600 perms
+  events.spec.ts             # extractExternalOutBodies filters; bigintHashToBase64 conversion; handler dispatch (slash / consumer / mirror patch)
 package.json                 # bin: automaton; file: deps on ../kronos/sdk and ../forgeton/sdk
 tsconfig.json                # strict + isolatedModules + NodeNext + ES2022, outDir dist/
 jest.config.ts               # --runInBand, 1 GB heap, 30s timeout, globalSetup=preflight
@@ -236,6 +243,17 @@ D.8 splits the execution logic into three layers:
 
 `submitExecute` on `WorkerDeps` is injectable specifically so tests can exercise the decision path without a live sandbox — production passes `defaultSubmitExecute` (the real `sendAndConfirm` + post-state verify); tests pass a no-op or a controlled-failure stub.
 
+### Event drain + checkpoint survive restarts
+
+`drainEvents(deps)` pages `getTransactions` backward for both registry and pool until it hits the last-processed `(lt, hash)` stored in `~/.titon/automaton/state.json`. Once caught up, it reverses the list (oldest-first) and dispatches every external-out body through `tryDecodeEvent` from whichever SDK owns that address. Unknown opcodes return `null` and are silently skipped — the decoder seam makes forward-compat safe (new event types from a registry upgrade don't crash the daemon, they just don't fire handlers until we teach the SDK about them).
+
+Handlers are pluggable via the `EventHandler` interface (`onRegistry` / `onPool` optional). Built-ins live in `handlers.ts`:
+- **`mirrorPatchHandler`** — `await mirror.refresh()` on every `AutomatonMirrorUpdated`. Incremental patch would duplicate the registry's swap-and-pop logic; `refresh()` is a full re-read which has the same steady-state cost when events are sparse.
+- **`selfSlashHandler`** — filters `AutomatonSlashed` for `automaton == me`, logs at warn, POSTs to `config.alertWebhookUrl` if set, calls the injected `onSelfSlash` hook (D.11 wires it to a prom-client counter). **Never throws** — a self-slash cannot be allowed to crash the daemon; we catch webhook failures and log them.
+- **`consumerWatchHandler`** — logs `ConsumerUpdated` for observability; no in-memory state to patch (stake subcommands read pool config fresh each invocation).
+
+Checkpoint is advanced ONLY after dispatch. A mid-drain crash re-reads the same events next run — handlers must be idempotent. For stake changes the handlers are naturally idempotent (refresh is idempotent, webhook POSTs to the same URL are also idempotent from the receiver's perspective with the `txHash` key).
+
 ### Mirror cache: refresh on count, replace on event
 
 `AutomatonMirror.ensureFresh()` reads `pool.getAutomatonCount()` first and skips the per-slot re-fetch if the count matches the last snapshot. The assumption is: swap-and-pop operations on the registry's dense mirror DO preserve the count but CAN move addresses between slots, which would leave our cached mirror slightly stale. D.8 accepts that drift (wrong-slot Execute just fails the tx; the next cycle fixes it); D.9 will tail `AutomatonMirrorUpdated` events and patch via `mirror.replace(...)` for exact consistency.
@@ -305,10 +323,11 @@ Production uses `DEFAULT_KDF_N = 131072` (matches ethers.js v6 wallet default, ~
 - **D.6 (status + doctor expansion)** — done. Chain runtime builder + deployment resolver; doctor gains RPC-reachable / balance / schema-match / consumer-admitted / lockfile checks (colour-coded, skip-aware); `automaton status` renders a full operator snapshot with best-effort chain reads. 13 additional tests.
 - **D.7 (stake lifecycle)** — done. Five subcommands (register / increase / request-unstake / cancel-unstake / withdraw) sharing one `submit()` helper: unlock wallet, pre-check on-chain state, size the pool message, send + wait for seqno advance, print tx hash + explorer URL. 22 additional tests (stake-cost math + waitForSeqnoAdvance with injected sleep/now).
 - **D.8 (Kronos worker)** — done. Pure `decide()` + `AutomatonMirror` cache + `runWorkerCycle(deps)` single-iteration loop with single-flight guard and injectable `submitExecute`. 26 additional tests (all 6 decide statuses × execute/skip paths + mirror refresh/replace + loop orchestration).
-- **Up next (D.9)** — Mirror sync + slash watcher: tail `AutomatonMirrorUpdated` events to incrementally patch the mirror; monitor `AutomatonSlashed` to log + surface slashes.
-- **D.10–D.15** — see `../kronos/progress.md`.
+- **D.9 (event subscriber)** — done. `drainEvents(deps)` tails registry + pool tx history, decodes external-out bodies via both SDKs, dispatches to pluggable handlers; `~/.titon/automaton/state.json` checkpoint survives restarts. Built-ins: mirror refresh on `AutomatonMirrorUpdated`, self-slash alerter (log + webhook + hook), consumer watcher. 28 additional tests.
+- **Up next (D.10)** — `automaton run` daemon: orchestrator (lockfile + unlock + client + worker + event loop), SIGTERM/SIGINT graceful shutdown, SIGHUP config reload.
+- **D.11–D.15** — see `../kronos/progress.md`.
 
-Total: **195 tests** across 13 suites. Full build + test runs in ~7 s.
+Total: **223 tests** across 15 suites. Full build + test runs in ~8 s.
 
 ## Security hardening — summary
 

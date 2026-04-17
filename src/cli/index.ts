@@ -1,0 +1,44 @@
+#!/usr/bin/env node
+// Entry point for the `automaton` binary.
+//
+// This file is intentionally thin: it wires commander, registers every
+// subcommand, and dispatches. The actual work lives in src/cli/commands/*
+// (built out progressively across Phase D tasks D.2 - D.10).
+
+import { Command } from 'commander';
+import { registerDoctorCommand } from './commands/doctor';
+import { registerInitCommand } from './commands/init';
+import { registerRunCommand } from './commands/run';
+import { registerStakeCommand } from './commands/stake';
+import { registerStatusCommand } from './commands/status';
+import { pkgVersion } from './version';
+
+function buildProgram(): Command {
+    const program = new Command();
+
+    program
+        .name('automaton')
+        .description(
+            'Titon automaton node — stake once with ForgeTON, earn across every admitted consumer product (Kronos, Fortuna, …).',
+        )
+        .version(pkgVersion(), '-v, --version', 'print version and exit');
+
+    registerInitCommand(program);
+    registerStatusCommand(program);
+    registerDoctorCommand(program);
+    registerStakeCommand(program);
+    registerRunCommand(program);
+
+    return program;
+}
+
+async function main(): Promise<void> {
+    const program = buildProgram();
+    await program.parseAsync(process.argv);
+}
+
+main().catch((err: unknown) => {
+    const message = err instanceof Error ? err.message : String(err);
+    process.stderr.write(`error: ${message}\n`);
+    process.exit(1);
+});

@@ -19,11 +19,13 @@
 
 import { Counter, Gauge, Histogram, Registry } from 'prom-client';
 import type { Decision } from '../worker/decide';
-import type { ExecuteFailureClass, WorkerCounters } from '../worker/loop';
+import type { ExecuteFailureClass, WorkerCounters } from '../observability';
 
 export interface DaemonMetrics {
     registry: Registry;
+    /** Decision/outcome counters produced by the worker cycle. */
     counters: WorkerCounters;
+    /** Observed-state gauges (snapshot path). */
     gauges: {
         walletBalance: Gauge<string>;
         automatonStake: Gauge<string>;
@@ -33,8 +35,16 @@ export interface DaemonMetrics {
         syncesReceived: Gauge<string>;
         slashesRequested: Gauge<string>;
         lastCycleCompletedAt: Gauge<string>;
-        selfSlashCount: Counter<string>;
-        drainDispatched: Counter<'source' | 'kind'>;
+    };
+    /**
+     * Event-subscriber counters. Separate from `counters` (which is the
+     * worker-decision API) and `gauges` (which are point-in-time
+     * snapshots) because these are drain-side, monotonic, and only
+     * touched by the orchestrator.
+     */
+    eventCounters: {
+        selfSlash: Counter<string>;
+        drainDispatched: Counter<'source'>;
         drainCapped: Counter<'source'>;
     };
     cycleDuration: Histogram<string>;
@@ -114,15 +124,18 @@ export function createDaemonMetrics(): DaemonMetrics {
             'automaton_last_cycle_completed_at_seconds',
             'Unix timestamp when the last poll cycle finished. /healthz flips FAIL when now − this > 2×pollIntervalMs.',
         ),
-        selfSlashCount: new Counter({
+    };
+
+    const eventCounters = {
+        selfSlash: new Counter({
             name: 'automaton_self_slash_total',
             help: 'Times this wallet has been slashed (AutomatonSlashed event observed).',
             registers: [registry],
         }),
         drainDispatched: new Counter({
             name: 'automaton_events_dispatched_total',
-            help: 'Event bodies decoded + dispatched by drainEvents.',
-            labelNames: ['source', 'kind'] as const,
+            help: 'Event bodies decoded + dispatched by drainEvents, labelled by source (registry or pool).',
+            labelNames: ['source'] as const,
             registers: [registry],
         }),
         drainCapped: new Counter({
@@ -140,5 +153,5 @@ export function createDaemonMetrics(): DaemonMetrics {
         registers: [registry],
     });
 
-    return { registry, counters, gauges, cycleDuration };
+    return { registry, counters, gauges, eventCounters, cycleDuration };
 }

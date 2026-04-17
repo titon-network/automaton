@@ -41,7 +41,7 @@ import {
 import { TonClient } from '@ton/ton';
 
 import type { Network } from '../config/schema';
-import { jitteredBackoff } from '../errors/backoff';
+import { jitteredBackoff, unrefSleep } from '../errors/backoff';
 
 export interface EndpointSpec {
     url: string;
@@ -145,7 +145,7 @@ export class FailoverTonClient {
         this.maxAttempts = Math.max(1, options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS);
         this.baseBackoffMs = options.baseBackoffMs ?? DEFAULT_BASE_BACKOFF_MS;
         this.maxBackoffMs = options.maxBackoffMs ?? DEFAULT_MAX_BACKOFF_MS;
-        this.sleep = options.sleep ?? defaultSleep;
+        this.sleep = options.sleep ?? unrefSleep;
         this.onRetry = options.onRetry ?? (() => {});
 
         this.clients = options.endpoints.map(
@@ -214,6 +214,21 @@ export class FailoverTonClient {
         );
     }
 
+    /**
+     * Ergonomic wrappers over the two raw `TonClient` methods production
+     * uses most often. Each routes through `.call(fn)` so failover +
+     * jittered backoff apply uniformly. Prefer these over `.call(c => c.xxx())`
+     * at the call-site — shorter, typed, and gives one grep target if the
+     * retry policy ever needs per-method tuning.
+     */
+    getBalance(address: Address): Promise<bigint> {
+        return this.call((c) => c.getBalance(address));
+    }
+
+    getMasterchainInfo(): Promise<Awaited<ReturnType<TonClient['getMasterchainInfo']>>> {
+        return this.call((c) => c.getMasterchainInfo());
+    }
+
     private buildProvider(address: Address, init: StateInit | null): ContractProvider {
         const call = <R>(fn: (client: TonClient) => Promise<R>) => this.call(fn);
         return {
@@ -244,6 +259,3 @@ export class FailoverTonClient {
     }
 }
 
-function defaultSleep(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
-}

@@ -1,3 +1,8 @@
+// createDaemonMetrics: every declared counter/gauge/histogram registers
+// with the expected name; the WorkerCounters interface is fully callable
+// without throwing; label propagation reaches the scrape output; each
+// createDaemonMetrics() call yields an isolated Registry (no global leak).
+
 import { createDaemonMetrics } from '../src/daemon/metrics';
 
 describe('createDaemonMetrics', () => {

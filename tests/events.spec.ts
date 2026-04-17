@@ -1,3 +1,10 @@
+// Event drain primitives + built-in handlers:
+// - extractExternalOutBodies pulls only external-out messages from a tx,
+// - bigintHashToBase64 round-trips 256-bit tx hashes to the toncenter format,
+// - selfSlashHandler fires only when automaton == me and POSTs to the webhook,
+// - mirrorPatchHandler debounces refreshes via onCycleEnd,
+// - consumerWatchHandler logs ConsumerUpdated.
+
 import { Address, beginCell, Cell, toNano } from '@ton/core';
 import type { Transaction } from '@ton/core';
 import {

@@ -22,7 +22,7 @@
 
 import pino from 'pino';
 import type { LogLevel } from '../config/schema';
-import type { WorkerLogger } from '../worker/loop';
+import type { WorkerLogger } from '../observability';
 
 const REDACT_PATHS: readonly string[] = [
     'password',

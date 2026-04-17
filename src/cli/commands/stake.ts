@@ -121,7 +121,7 @@ function requirePendingUnstake(info: AutomatonInfo): void {
 
 async function assertWalletFunded(ctx: StakeContext, value: bigint): Promise<void> {
     const required = value + WALLET_GAS_BUFFER;
-    const balance = await ctx.runtime.client.call((c) => c.getBalance(ctx.wallet.address));
+    const balance = await ctx.runtime.client.getBalance(ctx.wallet.address);
     if (balance < required) {
         const addr = ctx.wallet.address.toString({
             bounceable: false,

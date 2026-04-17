@@ -1,3 +1,8 @@
+// Health + metrics HTTP server: /metrics content-type + serialization,
+// /healthz fresh/stale/unstarted cases (the 2× pollInterval staleness gate),
+// /readyz all-ok + any-fail rendering with per-subcheck detail, 404/405
+// routing, query-string stripping.
+
 import { createDaemonMetrics } from '../src/daemon/metrics';
 import { startHealthServer, type HealthServer, type ReadinessCheck } from '../src/daemon/http';
 import type { WorkerLogger } from '../src/worker/loop';

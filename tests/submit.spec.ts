@@ -1,3 +1,7 @@
+// sendAndConfirm seams: waitForSeqnoAdvance poll + timeout paths,
+// pickWalletTx attribution against mixed tx batches, explorer URL
+// rendering for mainnet/testnet.
+
 import { Address } from '@ton/core';
 import type { Transaction } from '@ton/core';
 import {

@@ -55,6 +55,7 @@ import {
     selfSlashHandler,
     type CheckpointState,
     type EventHandler,
+    type SubmitExecuteFn,
     type WorkerCounters,
     type WorkerLogger,
 } from '../worker';
@@ -92,9 +93,13 @@ export const EXIT_LOCK_HELD = 75;
 
 /**
  * Mutable liveness + readiness state. Readers (HTTP handlers) see a
- * live view; writers (tick loop, startup sequencer) update fields as
- * state changes. Keeping this as a plain object — no events, no
- * reactivity — because there's exactly one writer per field.
+ * live view; writers update fields as state changes. Keeping this as a
+ * plain object — no events, no reactivity — because each field has
+ * exactly one logical writer:
+ *   - walletUnlocked    → startup sequencer (set once, stays true)
+ *   - lastCycleCompletedAt → tick onTick success path
+ *   - rpcReachable      → tick onTick finally (true on success, false on throw)
+ *   - stakeActive       → snapshotGauges inside the tick
  */
 interface DaemonState {
     lastCycleCompletedAt: number;
@@ -227,6 +232,7 @@ export async function runDaemon(options: RunDaemonOptions = {}): Promise<number>
             logger,
             onTick: async () => {
                 const stopTimer = metrics.cycleDuration.startTimer();
+                let tickOk = false;
                 try {
                     checkpointState = await tickOnce({
                         runtime,
@@ -244,13 +250,15 @@ export async function runDaemon(options: RunDaemonOptions = {}): Promise<number>
                         await snapshotGauges(runtime, wallet, metrics, state, logger);
                     }
                     tickCount++;
-                    state.rpcReachable = true;
                     state.lastCycleCompletedAt = Math.floor(Date.now() / 1000);
                     metrics.gauges.lastCycleCompletedAt.set(state.lastCycleCompletedAt);
-                } catch (err) {
-                    state.rpcReachable = false;
-                    throw err; // loopCycles logs + backs off
+                    tickOk = true;
                 } finally {
+                    // Single write site for rpcReachable — success path sets
+                    // it true before the try block's last statement; any throw
+                    // bypasses that and the finally writes false. loopCycles
+                    // observes the rethrown error and applies backoff.
+                    state.rpcReachable = tickOk;
                     stopTimer();
                 }
             },
@@ -297,7 +305,7 @@ export async function runDaemon(options: RunDaemonOptions = {}): Promise<number>
 }
 
 /**
- * Inputs to `tickOnce` — exported so D.15 sandbox tests can call
+ * Inputs to `tickOnce` — exported so sandbox integration tests can call
  * individual ticks without spinning up signal handlers + lockfile +
  * loopCycles.
  */
@@ -313,6 +321,20 @@ export interface TickDeps {
     logger: WorkerLogger;
     checkpointState: CheckpointState;
     jobFetchConcurrency: number | undefined;
+    /**
+     * Override Execute submission. Production always uses
+     * {@link defaultSubmitExecute} (FailoverTonClient + wallet signing via
+     * `sendAndConfirm`). Sandbox integration tests inject a custom fn
+     * that sends via a treasury — exercising the full decide → drain →
+     * contract-state loop without reimplementing wallet seqno polling.
+     */
+    submitExecute?: SubmitExecuteFn;
+    /**
+     * Override the clock supplied to `decide`. Production defaults to
+     * `Date.now()/1000`; sandbox tests pass `() => blockchain.now` so the
+     * window arithmetic matches simulated time advances.
+     */
+    nowSec?: () => number;
 }
 
 /**
@@ -333,26 +355,26 @@ export async function tickOnce(deps: TickDeps): Promise<CheckpointState> {
     const nextState = drain.state;
 
     // Feed drain results into metrics. `dispatched` is per-source so the
-    // counter label stays bounded (2 series) regardless of how many
+    // counter stays at 2 series (registry|pool) regardless of how many
     // event kinds landed in this batch.
     if (deps.metrics !== undefined) {
         if (drain.dispatched.registry > 0) {
-            deps.metrics.gauges.drainDispatched.inc(
-                { source: 'registry', kind: 'all' },
+            deps.metrics.eventCounters.drainDispatched.inc(
+                { source: 'registry' },
                 drain.dispatched.registry,
             );
         }
         if (drain.dispatched.pool > 0) {
-            deps.metrics.gauges.drainDispatched.inc(
-                { source: 'pool', kind: 'all' },
+            deps.metrics.eventCounters.drainDispatched.inc(
+                { source: 'pool' },
                 drain.dispatched.pool,
             );
         }
         if (!drain.fullyCaughtUp.registry) {
-            deps.metrics.gauges.drainCapped.inc({ source: 'registry' });
+            deps.metrics.eventCounters.drainCapped.inc({ source: 'registry' });
         }
         if (!drain.fullyCaughtUp.pool) {
-            deps.metrics.gauges.drainCapped.inc({ source: 'pool' });
+            deps.metrics.eventCounters.drainCapped.inc({ source: 'pool' });
         }
     }
 
@@ -372,6 +394,8 @@ export async function tickOnce(deps: TickDeps): Promise<CheckpointState> {
         counters: deps.counters,
         logger: deps.logger,
         jobFetchConcurrency: deps.jobFetchConcurrency,
+        submitExecute: deps.submitExecute,
+        nowSec: deps.nowSec,
     });
     deps.logger.debug('cycle complete', {
         jobs: cycle.jobCount,
@@ -474,7 +498,7 @@ function buildHandlers(
             me: wallet.address,
             logger,
             webhookUrl,
-            onSelfSlash: () => metrics.gauges.selfSlashCount.inc(),
+            onSelfSlash: () => metrics.eventCounters.selfSlash.inc(),
         }),
         consumerWatchHandler(logger),
     ];

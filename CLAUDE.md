@@ -19,7 +19,7 @@
 | Add a stake subcommand | `src/cli/commands/stake.ts` | Thread it through the shared `loadContext` → pre-state validation → `submit()` helper so the progress output + error handling stays uniform |
 | Change the Kronos decide tree | `src/worker/decide.ts` | Pure function `decide(input) → { action, reason, ... }`; add a `DecisionReason` tag and update the test matrix in `decide.spec.ts` |
 | Touch the worker poll loop | `src/worker/loop.ts` | `runWorkerCycle(deps)` does one iteration — ensure mirror freshness, iterate jobs, decide, submit. `submitExecute` is injectable for tests |
-| Change mirror caching | `src/worker/mirror.ts` | `AutomatonMirror.ensureFresh()` refreshes on count change; `replace()` is the hook for D.9's event-driven incremental updates |
+| Change mirror caching | `src/worker/mirror.ts` | `AutomatonMirror.ensureFresh()` refreshes when activeCount changes (tick-path); `refresh()` is unconditional (event-handler path — called by `mirrorPatchHandler` on `AutomatonMirrorUpdated`) |
 | Add an event handler | `src/worker/handlers.ts` | Write a factory returning `EventHandler`; `onRegistry` / `onPool` callbacks receive decoded SDK events + `TxContext`. `drainEvents` orchestrates dispatch |
 | Change event polling / checkpoint | `src/worker/events.ts` + `src/worker/checkpoint.ts` | `drainEvents(deps)` walks transactions backward to the stored checkpoint; state lives in `~/.titon/automaton/state.json` (zod-validated) |
 | Change daemon startup order | `src/daemon/orchestrator.ts` | `runDaemon()` composes lockfile → keystore unlock → runtime → schema check → event handlers → main loop → graceful shutdown. Order matters and is documented at the top of the file |
@@ -67,9 +67,9 @@
 **Which docs to load (in priority order):**
 
 1. **This file (`CLAUDE.md`)** — architecture + the navigator above. Always load.
-2. **`../kronos/progress.md` §Phase D** — the task-by-task plan for this repo (D.1–D.15). Load for "what's next" questions.
-3. **`../kronos/CLAUDE.md`** — Kronos registry architecture. Load when working on Kronos job execution (D.8 worker).
-4. **`../forgeton/CLAUDE.md`** — ForgeTON pool architecture. Load when working on stake lifecycle (D.7) or slash handling (D.9).
+2. **`../kronos/progress.md` §Phase D** — the task-by-task plan for this repo split into 15 stages (D.1–D.15). Cross-repo file; load for "what's next" questions. If absent, treat this section of CLAUDE.md as authoritative.
+3. **`../kronos/CLAUDE.md`** — Kronos registry architecture. Load when working on the Kronos worker loop (`src/worker/*`).
+4. **`../forgeton/CLAUDE.md`** — ForgeTON pool architecture. Load when working on stake lifecycle (`src/cli/commands/stake.ts`) or slash handling (`src/worker/handlers.ts`'s `selfSlashHandler`).
 
 ---
 
@@ -93,8 +93,8 @@ Kronos is the first admitted consumer. Fortuna (VRF) and other consumers will be
 - **Language:** TypeScript 5.5+, strict + `isolatedModules`, NodeNext resolution (CommonJS output — matches kronos-sdk / forgeton-sdk).
 - **CLI framework:** `commander` v12.
 - **Config:** `zod` for schema validation.
-- **Logger:** `pino` (wired in D.11).
-- **Metrics:** `prom-client` (wired in D.11).
+- **Logger:** `pino` with structural redaction on `password` / `mnemonic` / `privateKey` / `seed` / `secretKey`.
+- **Metrics:** `prom-client` — bundle returned from `createDaemonMetrics()`.
 - **Crypto:** Node's built-in `crypto` module (scrypt + AES-256-GCM for the keystore); `@ton/crypto` for BIP-39 mnemonics.
 - **TON:** `@ton/core` (primitives), `@ton/ton` (TonClient, WalletContractV5R1).
 - **SDKs:** `forgeton-sdk` + `kronos-sdk` from the sibling repos via `file:` deps (see §SDK snapshots below).
@@ -125,44 +125,15 @@ After `pnpm run build`:
 ```
 src/
   cli/
-    index.ts                 # commander entry point — wires every subcommand
+    index.ts                 # commander entry point — wires every subcommand + top-level error catch
     version.ts               # reads package.json at runtime
     prompt.ts                # readline-based text/choice/confirm prompts — all throw on non-TTY
     commands/
-      doctor.ts              # environment + config + keystore checks
+      doctor.ts              # environment + install + runtime preflight (ok/warn/fail/skip)
       init.ts                # interactive + flag-driven first-run setup (network, new/import wallet, password, write config+keystore)
       status.ts              # read-only operator snapshot (balance + automaton info + drift counters + lockfile)
       stake.ts               # register / increase / request-unstake / cancel-unstake / withdraw — each unlocks the wallet, pre-checks state, submits + waits for seqno advance
       run.ts                 # thin wrapper → src/daemon/orchestrator.ts runDaemon; --log-level override
-  worker/
-    decide.ts                # pure decision engine: job state × window × assignment → execute|skip + reason tag
-    mirror.ts                # AutomatonMirror cache (refresh on count change; replace hook for event-driven patching)
-    loop.ts                  # runWorkerCycle(deps) — one poll iteration; single-flight via Set<bigint>; submitExecute injectable for tests
-    checkpoint.ts            # state.json persistence — zod-validated (lt, hash) per address; atomicWriteFile
-    events.ts                # drainEvents(deps) — pages txs backward to checkpoint; decodes external-out bodies via both SDKs; dispatches
-    handlers.ts              # built-in event handlers: mirrorPatchHandler / selfSlashHandler (w/ webhook + onSelfSlash hook) / consumerWatchHandler
-    index.ts                 # barrel
-  errors/
-    backoff.ts               # jitteredBackoff + abortableRetry — AbortSignal-aware; shared by any async op that wants bounded retry
-    explain.ts               # explainExitCode + extractExitCode + formatExplanation — unified TVM-exit-code → human text
-    index.ts                 # barrel
-contrib/                     # distribution artefacts bundled in the published npm tarball
-  automaton.service          # systemd unit — opinionated sandbox, User=automaton, Restart=on-failure, EXIT_LOCK_HELD preventer
-  automaton.env.example      # stub for /etc/automaton.env — AUTOMATON_PASSWORD + optional log-level / port / network overrides
-Dockerfile                   # multi-stage build: node:22-alpine builder → distroless/nodejs22-debian12 runtime; non-root user; ENTRYPOINT node dist/cli/index.js
-.dockerignore                # relative to the PARENT build context; trims node_modules, build/, .git, sibling SDK build artefacts
-scripts/
-  release.sh                 # dry-run by default: test + version-bump + prepublishOnly + smoke + tag; prints next steps for npm publish + docker push
-  daemon/
-    logger.ts                # createPinoLogger (redacted: password/mnemonic/privateKey/seed/secretKey) + createConsoleLogger (tests)
-    loop.ts                  # abortableSleep / loopCycles (with exponential backoff) / waitForDrain — cancellable primitives
-    metrics.ts               # createDaemonMetrics → prom-client Registry + counters (WorkerCounters) + gauges + cycleDuration histogram
-    http.ts                  # startHealthServer — /metrics /healthz /readyz on 127.0.0.1:metricsPort
-    orchestrator.ts          # runDaemon: lockfile + unlock + runtime + schema-check + handlers + health server + main loop + gauges + graceful shutdown
-    index.ts                 # barrel
-      status.ts              # stub until D.6
-      stake.ts               # stub until D.7 (register / increase / unstake / cancel / withdraw)
-      run.ts                 # stub until D.10 (daemon)
   config/
     schema.ts                # zod Config schema + Network + LogLevel + defaultConfig(network)
     paths.ts                 # titonHome/automatonDir/configPath/walletPath/statePath/lockPath/logsDir
@@ -170,7 +141,7 @@ scripts/
     index.ts                 # barrel
   wallet/
     mnemonic.ts              # @ton/crypto wrapper — 24 words, validate, toKeys
-    wallet.ts                # walletFromMnemonic(mnemonic, network) — V5R1 derivation
+    wallet.ts                # walletFromMnemonic(mnemonic, network) — V5R1 derivation (network-aware address)
     keystore.ts              # scrypt+AES-GCM lock/unlock, atomic save, zod schema
     prompt.ts                # raw-mode hidden password prompt + AUTOMATON_PASSWORD fallback
     index.ts                 # barrel
@@ -178,16 +149,46 @@ scripts/
     ton-client.ts            # FailoverTonClient — endpoint rotation + jittered backoff on transient errors; .call(fn) + .open(contract)
     lockfile.ts              # PID-based single-instance lock; live/stale detection via process.kill(pid, 0)
     schema-check.ts          # compare on-chain storageVersion getters vs REGISTRY_STORAGE_VERSION + FORGETON_STORAGE_VERSION; refuse on mismatch
-    deployment.ts            # resolve (registry, pool) addresses per network — testnet via kronos-sdk's KRONOS_TESTNET; mainnet throws until it ships
-    runtime.ts               # buildChainRuntime(config) → { client, deployment, registry, pool } — the canonical "start talking to chain" entry point
+    deployment.ts            # resolve (registry, pool) addresses per network — testnet via kronos-sdk's KRONOS_TESTNET; mainnet throws DeploymentNotAvailableError
+    runtime.ts               # buildChainRuntime(config) → { client, deployment, registry, pool } — the canonical "start talking to chain" entry point; gates on config.products
     submit.ts                # senderFor() + sendAndConfirm() (seqno-advance polling) + explorer URL helpers; waitForSeqnoAdvance is the testable core
     stake-cost.ts            # pool message-value calculators — mirror of the on-chain floors in handleRegisterAutomaton / handleIncreaseStake / handleUnstake
+    snapshot.ts              # collectChainSnapshot — shared read-path for status + daemon gauges; best-effort with per-field error capture
+    index.ts                 # barrel
+  worker/
+    decide.ts                # pure decision engine: job state × window × assignment → execute|skip + reason tag
+    mirror.ts                # AutomatonMirror cache — ensureFresh (count-gated) + refresh (unconditional, called by mirrorPatchHandler)
+    loop.ts                  # runWorkerCycle(deps) — one poll iteration; single-flight via Set<bigint>; submitExecute injectable for tests
+    checkpoint.ts            # state.json persistence — zod-validated (lt, hash) per address; atomicWriteFile
+    events.ts                # drainEvents(deps) — pages txs backward to checkpoint; decodes external-out bodies via both SDKs; dispatches
+    handlers.ts              # built-in event handlers: mirrorPatchHandler / selfSlashHandler (w/ webhook + onSelfSlash hook) / consumerWatchHandler
+    index.ts                 # barrel
+  daemon/
+    logger.ts                # createPinoLogger (redacted: password/mnemonic/privateKey/seed/secretKey)
+    loop.ts                  # abortableSleep / loopCycles (with exponential backoff) / waitForDrain — cancellable primitives
+    metrics.ts               # createDaemonMetrics → prom-client Registry + WorkerCounters bundle + gauges + cycleDuration histogram
+    http.ts                  # startHealthServer — /metrics /healthz /readyz on metricsHost:metricsPort
+    orchestrator.ts          # runDaemon: lockfile + unlock + runtime + schema-check + handlers + health server + main loop + gauges + graceful shutdown; tickOnce exported for tests
+    index.ts                 # barrel
+  errors/
+    backoff.ts               # jitteredBackoff + abortableRetry — AbortSignal-aware; shared by any async op that wants bounded retry
+    explain.ts               # explainExitCode + extractExitCode + formatExplanation — unified TVM-exit-code → human text
     index.ts                 # barrel
   util/
-    atomic-write.ts          # tmp + chmod + rename (used by config + keystore)
+    atomic-write.ts          # tmp + chmod + rename (used by config + keystore + checkpoint)
+contrib/                     # distribution artefacts bundled in the published npm tarball
+  automaton.service          # systemd unit — opinionated sandbox, User=automaton, Restart=on-failure, EXIT_LOCK_HELD preventer
+  automaton.env.example      # stub for /etc/automaton.env — AUTOMATON_PASSWORD + optional log-level / port / network overrides
+Dockerfile                   # multi-stage build: node:22-alpine builder → distroless/nodejs22-debian12 runtime; non-root user; ENTRYPOINT node dist/cli/index.js
+.dockerignore                # relative to the PARENT build context; trims node_modules, build/, .git, sibling SDK build artefacts
+scripts/
+  release.sh                 # dry-run by default: test + version-bump + prepublishOnly + smoke + tag; prints next steps for npm publish + docker push
+  check-shebang.mjs          # prepublishOnly hook — verifies dist/cli/index.js retained its #! after tsc
 tests/
   preflight.ts               # jest globalSetup — fails fast on missing SDK dist / stray sibling node_modules
-  cli.spec.ts                # CLI smoke — help, version, doctor, stub exits
+  helpers/
+    chain.ts                 # sandbox integration harness — wraps @ton/sandbox Blockchain as a ChainRuntime-compatible bundle
+  cli.spec.ts                # CLI smoke — help, version, doctor, run/status without install, init without TTY
   config.spec.ts             # round-trip, env overlay, schema rejection, path resolution
   wallet.spec.ts             # mnemonic, derivation, keystore round-trip + 6 tamper vectors, prompt env fallback
   ton-client.spec.ts         # isTransientError taxonomy; retry/rotate/backoff; AllEndpointsFailedError
@@ -195,19 +196,26 @@ tests/
   schema-check.spec.ts       # ok case; either-side mismatch; error message content; propagates fetcher errors
   init.spec.ts               # non-interactive end-to-end, idempotence, flag validation, mnemonic + password file parsing
   deployment.spec.ts         # testnet resolves to KRONOS_TESTNET; mainnet throws DeploymentNotAvailableError
+  runtime.spec.ts            # buildChainRuntime composition + mainnet DeploymentNotAvailableError + products gating
   status.spec.ts             # renderStatus pure-rendering cases + runStatus "no install" rejection + mainnet no-chain path
   stake-cost.spec.ts         # pure math for all five value calculators + willCrossInactive edge cases
   submit.spec.ts             # waitForSeqnoAdvance poll/advance/timeout + pickWalletTx attribution + explorer URLs
+  snapshot.spec.ts           # collectChainSnapshot best-effort behaviour + preflightFailed + partial-error capture
   decide.spec.ts             # decision-tree coverage: every execute and skip reason, across primary/fallback/too-early/too-late/expired/inactive/underfunded
   worker-loop.spec.ts        # runWorkerCycle with injected runtime + submit stub; single-flight, failure recovery, counters, pause gate, cardinality
   checkpoint.spec.ts         # state.json round-trip, schema-version reject, malformed JSON, null-entry preservation, 0600 perms
   events.spec.ts             # extractExternalOutBodies filters; bigintHashToBase64 conversion; handler dispatch (slash / consumer / mirror patch)
   daemon-loop.spec.ts        # abortableSleep cancellation + timer cleanup; loopCycles error-resilience + onStart + backoff growth + cap + reset; waitForDrain timeout path
+  tick-once.spec.ts          # orchestrator-level: tickOnce composes drainEvents + runWorkerCycle; unit-level smoke
+  Integration.spec.ts        # end-to-end sandbox: registry + pool deployed, tickOnce drives decide → execute → drain across scenarios (rotation, fallback, slash, pause, etc.)
   logger.spec.ts             # pino redaction (top-level + nested secret paths); level filter; timestamp/level emission
-  metrics.spec.ts             # prom-client registry exports every declared name; counter-label propagation; per-instance isolation
+  metrics.spec.ts            # prom-client registry exports every declared name; counter-label propagation; per-instance isolation
   http.spec.ts               # /metrics content-type + body; /healthz fresh/stale/unstarted; /readyz all-ok + any-fail; 404/405/querystring routing
   backoff.spec.ts            # jitteredBackoff growth/cap/bounds; abortableRetry happy/fail/shouldRetry/onRetry/abort-signal/injected-sleep
   explain.spec.ts            # explainExitCode picks kronos vs forgeton vs tvm vs unknown; formatExplanation hint rendering; extractExitCode shapes
+  DocsSurface.spec.ts        # docs-vs-code drift guard — operator-facing metric names + config fields pinned against createDaemonMetrics + ConfigSchema
+  util.spec.ts               # atomicWriteFile perms + rename + parent mkdir; config/paths env-var overrides
+  prompt.spec.ts             # getPassword env/TTY paths + getPasswordWithConfirmation length check
 package.json                 # bin: automaton; file: deps on ../kronos/sdk and ../forgeton/sdk
 tsconfig.json                # strict + isolatedModules + NodeNext + ES2022, outDir dist/
 jest.config.ts               # --runInBand, 1 GB heap, 30s timeout, globalSetup=preflight
@@ -268,15 +276,15 @@ The pool's `getAutomaton(walletAddr)` returns `null` for "not registered" and th
 
 ### Worker decide is pure; loop is I/O; daemon is a timer
 
-D.8 splits the execution logic into three layers:
+The execution logic is three layers:
 
-1. **`decide(input)` (`src/worker/decide.ts`)** — pure function. Given a job's state + registry config + mirror snapshot + "me" + `now`, returns `{ action: 'execute' | 'skip', reason, detail, window, assigned }`. Every decision path has a machine-readable `reason` tag so metrics (D.11) and logs can slice by it without parsing strings.
+1. **`decide(input)` (`src/worker/decide.ts`)** — pure function. Given a job's state + registry config + mirror snapshot + "me" + `now`, returns `{ action: 'execute' | 'skip', reason, detail, window, assigned }`. Every decision path has a machine-readable `reason` tag so metrics and logs can slice by it without parsing strings. The full reason domain is in `src/worker/decide.ts` and is the authoritative list for Prometheus label cardinality.
 
-2. **`runWorkerCycle(deps)` (`src/worker/loop.ts`)** — one poll iteration. Refreshes the mirror, fetches registry config + jobCount in parallel, iterates `[0, jobCount)`, runs `decide`, and submits `Execute` for every "execute" decision. Single-flight via a `Set<bigint>` keyed on jobId ensures a slow RPC doesn't let the next tick race into a double-submit. Every RPC call is wrapped so a per-job fetch failure doesn't abort the whole cycle.
+2. **`runWorkerCycle(deps)` (`src/worker/loop.ts`)** — one poll iteration. Refreshes the mirror, fetches registry config + jobCount + paused flag in parallel, iterates `[0, jobCount)`, runs `decide`, and submits `Execute` for every "execute" decision. Single-flight via a `Set<bigint>` keyed on jobId ensures a slow RPC doesn't let the next tick race into a double-submit. Every RPC call is wrapped so a per-job fetch failure doesn't abort the whole cycle.
 
-3. **Daemon (D.10, not yet landed)** — wraps `runWorkerCycle` in `setInterval(pollIntervalMs)` + lockfile acquisition + SIGINT/SIGTERM handlers.
+3. **`runDaemon` (`src/daemon/orchestrator.ts`)** — wraps the cycle in `loopCycles(pollIntervalMs)` + lockfile acquisition + signal handlers + health server + graceful shutdown. `tickOnce(deps)` exports the compose-drain-then-cycle step so integration tests drive it directly.
 
-`submitExecute` on `WorkerDeps` is injectable specifically so tests can exercise the decision path without a live sandbox — production passes `defaultSubmitExecute` (the real `sendAndConfirm` + post-state verify); tests pass a no-op or a controlled-failure stub.
+`submitExecute` on `WorkerDeps` + `TickDeps` is injectable specifically so tests can exercise the decision path without a live sandbox — production passes `defaultSubmitExecute` (the real `sendAndConfirm` + post-state verify); sandbox tests pass `harness.submitExecuteVia(treasury)` which sends as the treasury and verifies the `executionCount` delta.
 
 ### Distribution
 
@@ -322,9 +330,9 @@ Release cuts go through `scripts/release.sh <bump>`, which is **dry-run by defau
 10. On abort: `waitForDrain(inFlight.size === 0, 30s)` → final `saveCheckpointState` → exit 0.
 11. `finally { releaseLock() }` — lockfile release survives crashes, uncaught aborts, signal storms.
 
-All cancellation goes through one `AbortController`. `abortableSleep` clears its timer on abort (no leaked handles). `loopCycles` never lets a tick throw abort the loop — errors log at `error` and the next tick fires. SIGHUP is deliberately a warn-and-ignore today; config reload without restart is D.11+ scope.
+All cancellation goes through one `AbortController`. `abortableSleep` clears its timer on abort (no leaked handles). `loopCycles` never lets a tick throw abort the loop — errors log at `error` and the next tick fires. SIGHUP is deliberately a warn-and-ignore today; config reload without restart is a future item.
 
-Tests inject `externalAbort: AbortSignal` so sandbox tests (D.15) can drive shutdown deterministically instead of signaling the host process.
+Tests inject `externalAbort: AbortSignal` so integration tests can drive shutdown deterministically instead of signaling the host process.
 
 ### Event drain + checkpoint survive restarts
 
@@ -332,14 +340,18 @@ Tests inject `externalAbort: AbortSignal` so sandbox tests (D.15) can drive shut
 
 Handlers are pluggable via the `EventHandler` interface (`onRegistry` / `onPool` optional). Built-ins live in `handlers.ts`:
 - **`mirrorPatchHandler`** — `await mirror.refresh()` on every `AutomatonMirrorUpdated`. Incremental patch would duplicate the registry's swap-and-pop logic; `refresh()` is a full re-read which has the same steady-state cost when events are sparse.
-- **`selfSlashHandler`** — filters `AutomatonSlashed` for `automaton == me`, logs at warn, POSTs to `config.alertWebhookUrl` if set, calls the injected `onSelfSlash` hook (D.11 wires it to a prom-client counter). **Never throws** — a self-slash cannot be allowed to crash the daemon; we catch webhook failures and log them.
+- **`selfSlashHandler`** — filters `AutomatonSlashed` for `automaton == me`, logs at warn, POSTs to `config.alertWebhookUrl` if set, calls the injected `onSelfSlash` hook (wired to `metrics.eventCounters.selfSlash` in production). **Never throws** — a self-slash cannot be allowed to crash the daemon; we catch webhook failures and log them.
 - **`consumerWatchHandler`** — logs `ConsumerUpdated` for observability; no in-memory state to patch (stake subcommands read pool config fresh each invocation).
 
 Checkpoint is advanced ONLY after dispatch. A mid-drain crash re-reads the same events next run — handlers must be idempotent. For stake changes the handlers are naturally idempotent (refresh is idempotent, webhook POSTs to the same URL are also idempotent from the receiver's perspective with the `txHash` key).
 
-### Mirror cache: refresh on count, replace on event
+### Mirror cache: ensureFresh on tick, refresh on event
 
-`AutomatonMirror.ensureFresh()` reads `pool.getAutomatonCount()` first and skips the per-slot re-fetch if the count matches the last snapshot. The assumption is: swap-and-pop operations on the registry's dense mirror DO preserve the count but CAN move addresses between slots, which would leave our cached mirror slightly stale. D.8 accepts that drift (wrong-slot Execute just fails the tx; the next cycle fixes it); D.9 will tail `AutomatonMirrorUpdated` events and patch via `mirror.replace(...)` for exact consistency.
+`AutomatonMirror` has two methods for two call-sites:
+- **`ensureFresh()`** — tick-path. Reads `registry.getActiveAutomatonCount()` first and skips the per-slot re-fetch if the count matches the last snapshot. Swap-and-pop on the registry's dense mirror preserves the count but CAN move addresses between slots, so this alone can drift — acceptable on the tick path since a wrong-slot Execute just fails the tx and the next cycle fixes it.
+- **`refresh()`** — event-path. Unconditional full re-read. `mirrorPatchHandler` invokes it on every `AutomatonMirrorUpdated` event (debounced via `onCycleEnd`), closing the swap-and-pop drift window.
+
+`registry.getActiveAutomatonCount()` is the authoritative source (what `decide` resolves assignment against). Do NOT substitute `pool.getAutomatonCount()` — that's the pool's zombie-inclusive lifetime counter.
 
 ### Stake subcommands pre-check on-chain state before sending
 
@@ -405,16 +417,16 @@ Production uses `DEFAULT_KDF_N = 131072` (matches ethers.js v6 wallet default, ~
 - **D.5 (init command)** — done. Interactive + flag-driven first-run setup: network + new/import wallet + password + keystore + config, all idempotent. 17 additional tests (plus a non-TTY CLI smoke test).
 - **D.6 (status + doctor expansion)** — done. Chain runtime builder + deployment resolver; doctor gains RPC-reachable / balance / schema-match / consumer-admitted / lockfile checks (colour-coded, skip-aware); `automaton status` renders a full operator snapshot with best-effort chain reads. 13 additional tests.
 - **D.7 (stake lifecycle)** — done. Five subcommands (register / increase / request-unstake / cancel-unstake / withdraw) sharing one `submit()` helper: unlock wallet, pre-check on-chain state, size the pool message, send + wait for seqno advance, print tx hash + explorer URL. 22 additional tests (stake-cost math + waitForSeqnoAdvance with injected sleep/now).
-- **D.8 (Kronos worker)** — done. Pure `decide()` + `AutomatonMirror` cache + `runWorkerCycle(deps)` single-iteration loop with single-flight guard and injectable `submitExecute`. 26 additional tests (all 6 decide statuses × execute/skip paths + mirror refresh/replace + loop orchestration).
+- **D.8 (Kronos worker)** — done. Pure `decide()` + `AutomatonMirror` cache + `runWorkerCycle(deps)` single-iteration loop with single-flight guard and injectable `submitExecute`. 26 additional tests (all 6 decide statuses × execute/skip paths + mirror refresh + loop orchestration).
 - **D.9 (event subscriber)** — done. `drainEvents(deps)` tails registry + pool tx history, decodes external-out bodies via both SDKs, dispatches to pluggable handlers; `~/.titon/automaton/state.json` checkpoint survives restarts. Built-ins: mirror refresh on `AutomatonMirrorUpdated`, self-slash alerter (log + webhook + hook), consumer watcher. 28 additional tests.
 - **D.10 (daemon)** — done. `runDaemon` composes lockfile + unlock + runtime + schema-check + handlers + timer loop + graceful shutdown. `abortableSleep` / `loopCycles` / `waitForDrain` primitives are cancellable and tested. SIGHUP reload deferred with a loud warn. 14 additional tests.
 - **D.11 (logs + metrics + health)** — done. Pino logger with structural redaction, prom-client `DaemonMetrics` bundle (counters + gauges + cycle histogram), `startHealthServer` exposes `/metrics`/`/healthz`/`/readyz` on `config.metricsHost:metricsPort`. Gauges snapshot every Nth cycle (configurable via `gaugeSnapshotEveryNTicks`). Shared `collectChainSnapshot` used by status + daemon. 28 additional tests.
 - **D.12 (error handling + backoff)** — done. `abortableRetry` + `jitteredBackoff` primitives; `explainExitCode` unifies kronos/forgeton/tvm SDK error tables; CLI top-level catch surfaces explanation under the raw error. Daemon installs `uncaughtException` + `unhandledRejection` handlers that log + trigger graceful shutdown. 25 additional tests.
 - **D.13 (distribution)** — done. `prepublishOnly` + `smoke` npm scripts; multi-stage `Dockerfile` (alpine builder → distroless nonroot runtime, multi-arch); `contrib/automaton.service` systemd unit with full sandbox + `automaton.env.example`; `scripts/release.sh` dry-run-by-default release helper. Known limitation: `file:` SDK deps block actual `npm publish` until the SDKs are independently published.
 - **D.14 (documentation)** — done. Operator-focused `README.md`; `docs/quickstart.md` (5-min testnet walk-through); `docs/ops.md` (systemd + Docker + key rotation + upgrade + backup + multi-region); `docs/troubleshooting.md` (every exit code + every common init/stake/run/preflight failure); `AGENTS.md` (AI-navigable quick reference matching kronos-sdk pattern).
-- **Up next (D.15)** — Testing + testnet rehearsal (sandbox integration tests + 24 h testnet burn-in).
+- **D.15 (testing + testnet rehearsal)** — sandbox integration suite via `tests/helpers/chain.ts` + `tests/Integration.spec.ts` (22 end-to-end scenarios: never-executed happy path, 2-automaton rotation, fallback claim + slash, mirror handler, self-slash webhook, consumer watch, paused registry, multi-job, cancelled-job hole, checkpoint resume idempotence, handler-throw checkpoint guard, in-flight collision, expired, underfunded, execute-revert verify-failed). `tests/DocsSurface.spec.ts` pins operator-facing docs' metric names + config fields against runtime surfaces. `TickDeps` extended with optional `submitExecute` + `nowSec` for sandbox wiring. Manual 24 h testnet burn-in is a human-only task and remains outside the automated suite.
 
-Total: **292 tests** across 22 suites. Full build + test runs in ~9 s.
+Total: **342 tests** across 28 suites. Full build + test runs in ~16 s.
 
 ## Security hardening — summary
 

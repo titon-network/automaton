@@ -1,3 +1,8 @@
+// abortableSleep / loopCycles / waitForDrain: cancellable primitives
+// the daemon main loop leans on. Covers timer cleanup on abort, per-tick
+// try/catch with exponential backoff growth/cap/reset, AbortSignal
+// propagation, and the waitForDrain timeout + signal paths.
+
 import {
     AbortError,
     abortableSleep,

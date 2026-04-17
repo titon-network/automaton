@@ -1,3 +1,8 @@
+// Decision-tree coverage: every execute + skip reason across the full
+// window matrix (too-early / primary-self / primary-other / fallback /
+// too-late / expired / inactive / underfunded / no-rotation / never-executed).
+// Pure function — no RPC, no mocks.
+
 import { Address, toNano } from '@ton/core';
 import type { JobData, RegistryConfigReply } from 'kronos-sdk';
 import { decide } from '../src/worker/decide';

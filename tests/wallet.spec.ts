@@ -1,3 +1,8 @@
+// Wallet lifecycle: mnemonic generation + BIP-39 validation, V5R1 key
+// derivation (network-aware addressing), keystore scrypt+AES-GCM lock/unlock
+// round-trip, six tamper vectors (ciphertext/tag/salt/nonce/address/network),
+// password prompt env fallback.
+
 import { mkdtempSync, rmSync, statSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';

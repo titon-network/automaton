@@ -2,8 +2,9 @@
 // Entry point for the `automaton` binary.
 //
 // This file is intentionally thin: it wires commander, registers every
-// subcommand, and dispatches. The actual work lives in src/cli/commands/*
-// (built out progressively across Phase D tasks D.2 - D.10).
+// subcommand, and dispatches. The actual work lives in src/cli/commands/*.
+// Exit-code translation (explainExitCode) happens here so every CLI
+// failure surfaces a human-readable explanation alongside the raw message.
 
 import { Command } from 'commander';
 import { registerDoctorCommand } from './commands/doctor';

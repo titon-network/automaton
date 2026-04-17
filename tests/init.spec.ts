@@ -1,3 +1,8 @@
+// `automaton init` non-interactive + idempotence coverage: flag-driven
+// setup end-to-end (network + mnemonic file + password file), refusal to
+// overwrite existing files, `--import-mnemonic` + `--password-file` parsing
+// edge cases (empty, oversized, invalid words), TTY-absent error path.
+
 import { existsSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';

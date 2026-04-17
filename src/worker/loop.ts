@@ -1,17 +1,19 @@
 // One iteration of the automaton's poll cycle.
 //
-// D.8 builds a single-shot `runWorkerCycle(deps)` that does one pass
-// through the registry: ensure mirror is fresh, fetch config, iterate
-// [0, jobCount), run `decide()` on each, and submit Execute for every
-// "execute" decision. D.10 wraps this in `setInterval` + signal
-// handling + lockfile to become the daemon.
+// `runWorkerCycle(deps)` does a single pass through the registry:
+// ensure the mirror is fresh, fetch config + jobCount + paused state,
+// iterate [0, jobCount), run `decide()` on each, and submit Execute for
+// every "execute" decision. `runDaemon` (src/daemon/orchestrator.ts)
+// wraps this in `loopCycles` + signal handling + lockfile to become
+// the daemon.
 //
 // Single-flight: a Set<bigint> of jobIds currently submitting keeps a
 // slow RPC round-trip from racing the next tick into a double-submit.
 // The guard releases on both success AND failure (finally), so a
 // persistently-failing job doesn't block its own retry forever.
 //
-// Metrics are no-op counters here; D.11 wires them to prom-client.
+// Metrics are counters from the bundle returned by createDaemonMetrics;
+// NOOP_COUNTERS is the default for tests that don't care.
 
 import { Address } from '@ton/core';
 import type { JobData, RegistryConfigReply } from 'kronos-sdk';
@@ -25,48 +27,24 @@ import {
     type ChainRuntime,
 } from '../chain';
 import type { AutomatonWallet } from '../wallet';
+import {
+    NOOP_COUNTERS,
+    SILENT_LOGGER,
+    type ExecuteFailureClass,
+    type WorkerCounters,
+    type WorkerLogger,
+} from '../observability';
 import { AutomatonMirror } from './mirror';
 import { decide, type Decision } from './decide';
 
-// Bounded error-class tags — these become Prometheus labels, so
-// cardinality must stay finite. Do NOT add raw RPC messages here.
-export type ExecuteFailureClass =
-    | 'rpc-timeout'
-    | 'pool-rejected'
-    | 'tx-attribution'
-    | 'confirmation-timeout'
-    | 'verify-failed'
-    | 'other';
-
-export interface WorkerCounters {
-    incrementExecuteAttempt(reason: Decision['reason']): void;
-    incrementExecuteSuccess(reason: Decision['reason']): void;
-    /** `reason` is the decide-tree tag; `errorClass` is a bounded failure taxonomy. */
-    incrementExecuteFailure(reason: Decision['reason'], errorClass: ExecuteFailureClass): void;
-    incrementSkip(reason: Decision['reason']): void;
-    incrementInFlightCollision(): void;
-}
-
-export const NOOP_COUNTERS: WorkerCounters = {
-    incrementExecuteAttempt: () => {},
-    incrementExecuteSuccess: () => {},
-    incrementExecuteFailure: () => {},
-    incrementSkip: () => {},
-    incrementInFlightCollision: () => {},
-};
-
-export interface WorkerLogger {
-    debug(message: string, fields?: Record<string, unknown>): void;
-    info(message: string, fields?: Record<string, unknown>): void;
-    warn(message: string, fields?: Record<string, unknown>): void;
-    error(message: string, fields?: Record<string, unknown>): void;
-}
-
-export const SILENT_LOGGER: WorkerLogger = {
-    debug: () => {},
-    info: () => {},
-    warn: () => {},
-    error: () => {},
+// Re-exported so existing `from '../worker'` imports keep working. The
+// authoritative definitions now live in `src/observability/`.
+export {
+    NOOP_COUNTERS,
+    SILENT_LOGGER,
+    type ExecuteFailureClass,
+    type WorkerCounters,
+    type WorkerLogger,
 };
 
 export interface WorkerDeps {
@@ -243,17 +221,26 @@ async function fetchJobsBounded(
 }
 
 function classifyExecuteFailure(err: unknown): ExecuteFailureClass {
-    if (err instanceof PoolRejectedError) return 'pool-rejected';
+    // Post-state verify callbacks throw plain `Error` instances; sendAndConfirm
+    // catches them and wraps in PoolRejectedError. To distinguish a real
+    // internal-message revert from a verify-callback failure (both surface as
+    // PoolRejectedError), inspect the wrapped reason's message.
+    if (err instanceof PoolRejectedError) {
+        return isVerifyMessage(err.reason.message) ? 'verify-failed' : 'pool-rejected';
+    }
     if (err instanceof TxAttributionError) return 'tx-attribution';
     if (err instanceof ConfirmationTimeoutError) return 'confirmation-timeout';
     if (err instanceof AllEndpointsFailedError) return 'rpc-timeout';
-    if (
-        err instanceof Error &&
-        (err.message.includes('lastExecutedAt') || err.message.includes('executionCount'))
-    ) {
+    // Non-`sendAndConfirm` code paths (sandbox test harnesses, custom
+    // submitExecute overrides) may throw an unwrapped verify error.
+    if (err instanceof Error && isVerifyMessage(err.message)) {
         return 'verify-failed';
     }
     return 'other';
+}
+
+function isVerifyMessage(message: string): boolean {
+    return message.includes('executionCount') || message.includes('lastExecutedAt');
 }
 
 async function safeFetchJob(

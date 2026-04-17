@@ -1,10 +1,10 @@
 // Generic retry + backoff primitives for any `() => Promise<T>`.
 //
-// FailoverTonClient already retries per-call with endpoint rotation
-// (D.4), which covers the common RPC-blip path. These helpers are for
+// FailoverTonClient already retries per-call with endpoint rotation,
+// which covers the common RPC-blip path. These helpers are for
 // everything ELSE: state-machine operations where we want bounded
-// retries without reaching for a new client. Concrete consumers (as of
-// D.12): nothing in hot paths uses it yet, but the primitive is
+// retries without reaching for a new client. Concrete consumers today
+// are sparse (nothing in hot paths uses it yet), but the primitive is
 // exported so future code (e.g. deferred alert POSTs, file-lock
 // acquisition, third-party webhook callers) has a single reusable
 // pattern instead of hand-rolling yet another while-loop + setTimeout.
@@ -131,9 +131,18 @@ export async function abortableRetry<T>(
  * never prevent the daemon process from exiting. Callers that provide
  * their own `options.sleep` / `options.signal` control cleanup
  * themselves.
+ *
+ * Exported so every async primitive in the codebase (FailoverTonClient
+ * retry loop, etc.) uses the same unref-ed sleep. Don't add a private
+ * setTimeout-based sleep elsewhere — pending timers without `.unref()`
+ * can hold Node's event loop open past the daemon's graceful shutdown.
  */
-function defaultSleep(ms: number): Promise<void> {
+export function unrefSleep(ms: number): Promise<void> {
     return new Promise((resolve) => {
         setTimeout(resolve, ms).unref();
     });
+}
+
+function defaultSleep(ms: number): Promise<void> {
+    return unrefSleep(ms);
 }

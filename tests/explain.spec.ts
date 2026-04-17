@@ -1,3 +1,9 @@
+// TVM exit-code translation: explainExitCode picks between kronos-sdk
+// (100-119), forgeton-sdk (160-182), and TVM (1-100) error tables;
+// formatExplanation renders hint-bearing human text; extractExitCode
+// pulls numeric codes from SDK errors, numeric fields, and "exit code N"
+// substrings in sandbox error messages.
+
 import { explainExitCode, extractExitCode, formatExplanation } from '../src/errors/explain';
 
 describe('explainExitCode', () => {

@@ -1,3 +1,8 @@
+// createPinoLogger: structural secret redaction (top-level + one level deep),
+// LogLevel filter enforcement across trace/debug/info/warn/error, timestamp
+// + level field emission. The redact list doubles as a grep target for
+// "don't log this plaintext" audits.
+
 import { Writable } from 'stream';
 import { createPinoLogger, REDACTED_LOG_PATHS } from '../src/daemon/logger';
 

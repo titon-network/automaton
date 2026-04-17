@@ -1,3 +1,8 @@
+// Pool message-value calculators: register / increase / request-unstake /
+// cancel-unstake / finalize-unstake. Each mirrors an on-chain floor in
+// ForgeTON's handlers. Also covers willCrossInactive's drop-below-minStake
+// boundary detection.
+
 import { toNano } from '@ton/core';
 import type { ForgetonConfigReply } from 'forgeton-sdk';
 import {

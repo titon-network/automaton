@@ -1,3 +1,9 @@
+// runWorkerCycle: single-iteration worker loop exercised with injected
+// runtime + submit stub. Covers single-flight guard, per-job fetch-error
+// isolation, counter calls on every decision (attempts/success/failure/skip),
+// paused-registry gate, classifyExecuteFailure taxonomy (incl. the
+// PoolRejectedError verify-failed unwrap), and bounded-label cardinality.
+
 import { Address, toNano } from '@ton/core';
 import type { JobData, RegistryConfigReply } from 'kronos-sdk';
 import type { AutomatonWallet } from '../src/wallet';
@@ -328,7 +334,7 @@ describe('runWorkerCycle', () => {
         expect(collisions).toBe(1);
     });
 
-    it('classifies failure types into bounded error classes via instanceof', async () => {
+    it('classifies a PoolRejectedError (generic internal-message revert) as "pool-rejected"', async () => {
         const runtime = buildFakeRuntime({
             jobs: new Map([[0n, mkJob()]]),
             mirror: [ME],
@@ -356,6 +362,40 @@ describe('runWorkerCycle', () => {
         });
 
         expect(classes).toEqual(['pool-rejected']);
+    });
+
+    it('classifies a PoolRejectedError WRAPPING a verify-callback throw as "verify-failed"', async () => {
+        // Production path: defaultSubmitExecute's verify callback throws
+        // Error("executionCount did not advance …"), sendAndConfirm catches +
+        // wraps it in PoolRejectedError. Without unwrapping the reason, every
+        // verify-failed reverted Execute would be misclassified as 'pool-rejected'.
+        const runtime = buildFakeRuntime({
+            jobs: new Map([[0n, mkJob()]]),
+            mirror: [ME],
+        });
+
+        const classes: string[] = [];
+        await runWorkerCycle({
+            runtime,
+            wallet: fakeWallet(),
+            mirror: new AutomatonMirror(runtime),
+            inFlight: new Set(),
+            nowSec: () => NOW_SEC,
+            counters: {
+                ...NOOP_COUNTERS_SHAPE,
+                incrementExecuteFailure: (_reason, errorClass) => {
+                    classes.push(errorClass);
+                },
+            },
+            submitExecute: async () => {
+                throw new PoolRejectedError(
+                    new Error('executionCount did not advance (pre=0, post=0) — Execute reverted'),
+                    'abc123',
+                );
+            },
+        });
+
+        expect(classes).toEqual(['verify-failed']);
     });
 
     it('invokes the counters hook on every decision', async () => {

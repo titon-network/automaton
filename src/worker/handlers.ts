@@ -1,8 +1,20 @@
 // Built-in event handlers. Each returns an {@link EventHandler} that
-// the daemon (D.10) plugs into `drainEvents`. Kept separate from
-// `events.ts` so user-defined handlers (future experimentation, tests)
-// can be composed alongside the defaults without touching the drain
-// machinery.
+// the daemon plugs into `drainEvents`. Kept separate from `events.ts`
+// so user-defined handlers (future experimentation, tests) can be
+// composed alongside the defaults without touching the drain machinery.
+//
+// Event kinds each handler watches (full enum lives in
+// `kronos-sdk/events` for registry events and `forgeton-sdk/events`
+// for pool events):
+//   - mirrorPatchHandler  — onRegistry: 'AutomatonMirrorUpdated'
+//   - selfSlashHandler    — onPool:     'AutomatonSlashed'
+//   - consumerWatchHandler— onPool:     'ConsumerUpdated'
+//
+// Adding a handler: copy the shape of `consumerWatchHandler` — filter
+// on `event.kind`, inspect the fields the SDK's decoder populates, call
+// the side-effect hook. Never throw; `drainEvents` refuses to advance
+// the checkpoint on handler throws, which blocks forward progress until
+// the handler is fixed.
 
 import type { Address } from '@ton/core';
 import type { EventHandler, TxContext } from './events';
@@ -45,7 +57,7 @@ export interface SlashAlertDeps {
     webhookUrl?: string;
     /** Injected for tests — defaults to global fetch. */
     fetch?: typeof fetch;
-    /** Invoked on every self-slash; D.11 wires this to a prom-client counter. */
+    /** Invoked on every self-slash; production wires this to `metrics.eventCounters.selfSlash`. */
     onSelfSlash?: (event: SelfSlashPayload) => void;
 }
 
@@ -77,7 +89,9 @@ export interface SelfSlashPayload {
  * advancement). Failures are logged but not retried.
  */
 export function selfSlashHandler(deps: SlashAlertDeps): EventHandler {
-    const fetchImpl = deps.fetch ?? (typeof fetch !== 'undefined' ? fetch : undefined);
+    // Node 22+ ships a global `fetch`; package.json pins `"node": ">=22"`,
+    // so we treat it as always present. Tests override via deps.fetch.
+    const fetchImpl = deps.fetch ?? fetch;
 
     return {
         onPool(event, ctx) {
@@ -98,7 +112,7 @@ export function selfSlashHandler(deps: SlashAlertDeps): EventHandler {
             deps.logger.warn('SLASH — this automaton was slashed', { ...payload });
             deps.onSelfSlash?.(payload);
 
-            if (deps.webhookUrl !== undefined && fetchImpl !== undefined) {
+            if (deps.webhookUrl !== undefined) {
                 postWebhookDetached(fetchImpl, deps.webhookUrl, payload, deps.logger);
             }
         },

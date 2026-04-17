@@ -1,3 +1,7 @@
+// `automaton status` rendering + no-install rejection + mainnet no-chain
+// skip. Pure-render cases exercise the output shape without touching the
+// network; the integration path is covered by snapshot.spec.ts.
+
 import { existsSync, mkdtempSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';

@@ -1,3 +1,9 @@
+// FailoverTonClient: the endpoint rotation + retry layer production wraps
+// around every `@ton/ton` TonClient call. Covers isTransientError taxonomy
+// (network codes + HTTP 429 + 5xx; NON-transient 4xx), cursor rotation on
+// failure, jittered backoff growth, and AllEndpointsFailedError shape on
+// exhaustion.
+
 import { TonClient } from '@ton/ton';
 import {
     AllEndpointsFailedError,

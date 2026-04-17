@@ -1,3 +1,7 @@
+// resolveDeployment: maps config.network → (registry, pool) addresses.
+// Testnet uses KRONOS_TESTNET; mainnet throws DeploymentNotAvailableError
+// until the constant ships.
+
 import { KRONOS_TESTNET } from 'kronos-sdk';
 import { defaultConfig } from '../src/config/schema';
 import { DeploymentNotAvailableError, resolveDeployment } from '../src/chain/deployment';

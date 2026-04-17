@@ -1,3 +1,7 @@
+// Config load/save: zod validation, env overlay allow-list, default-config
+// round-trip, typed-error classes for missing/malformed files, atomic-write
+// file mode + path overrides via TITON_HOME / AUTOMATON_CONFIG.
+
 import { mkdtempSync, rmSync, readFileSync, statSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';

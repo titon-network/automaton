@@ -26,9 +26,8 @@
 
 ```
 src/
-  index.ts                       # unused — package is CLI-only (bin: dist/cli/index.js)
   cli/
-    index.ts                     # commander entry; top-level error surface + explainExitCode
+    index.ts                     # commander entry (bin → dist/cli/index.js); top-level error surface + explainExitCode
     commands/{init,doctor,status,stake,run}.ts
     prompt.ts                    # readline text/choice/confirm (non-TTY throws NotInteractiveError)
     version.ts                   # reads package.json at runtime

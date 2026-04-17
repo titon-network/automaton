@@ -3,7 +3,7 @@
 // no side channels) so unit tests exercise them with real timers +
 // AbortControllers — no mocks required.
 
-import type { WorkerLogger } from '../worker/loop';
+import type { WorkerLogger } from '../observability';
 
 /**
  * Sleep for `ms` milliseconds. Rejects with an AbortError if the signal
@@ -105,26 +105,49 @@ export interface WaitForDrainOptions {
     logger: WorkerLogger;
     /** What we're waiting on — used in log messages. */
     label: string;
+    /**
+     * Optional abort signal — when supplied, a second shutdown signal aborts
+     * the drain wait and returns false immediately (without waiting for the
+     * timeout). Production's orchestrator wires this so operators pressing
+     * ^C twice don't have to sit through the full grace window.
+     */
+    signal?: AbortSignal;
 }
 
 /**
  * Poll `isDrained()` until it returns true or `timeoutMs` elapses.
- * Returns `true` if drained, `false` on timeout. Shutdown callers use
- * this to give in-flight txs a chance to confirm before killing the
- * process, but we do NOT block forever — a wedged RPC must not prevent
- * the daemon from exiting.
+ * Returns `true` if drained, `false` on timeout or external abort.
+ * Shutdown callers use this to give in-flight txs a chance to confirm
+ * before killing the process, but we do NOT block forever — a wedged RPC
+ * must not prevent the daemon from exiting.
  */
 export async function waitForDrain(options: WaitForDrainOptions): Promise<boolean> {
     const poll = options.pollIntervalMs ?? 100;
     const start = Date.now();
     while (!options.isDrained()) {
+        if (options.signal?.aborted) {
+            options.logger.warn(`${options.label}: aborted before drain completed`);
+            return false;
+        }
         if (Date.now() - start >= options.timeoutMs) {
             options.logger.warn(
                 `${options.label}: did not drain within ${options.timeoutMs}ms — abandoning`,
             );
             return false;
         }
-        await new Promise((r) => setTimeout(r, poll));
+        try {
+            if (options.signal !== undefined) {
+                await abortableSleep(poll, options.signal);
+            } else {
+                await new Promise((r) => setTimeout(r, poll).unref());
+            }
+        } catch (err) {
+            if (isAbortError(err)) {
+                options.logger.warn(`${options.label}: aborted before drain completed`);
+                return false;
+            }
+            throw err;
+        }
     }
     return true;
 }

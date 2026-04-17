@@ -215,7 +215,7 @@ function buildChainChecks(ctx: {
             name: 'rpc reachable',
             run: async () => {
                 const start = Date.now();
-                const info = await ctx.runtime.client.call((c) => c.getMasterchainInfo());
+                const info = await ctx.runtime.client.getMasterchainInfo();
                 const ms = Date.now() - start;
                 return {
                     status: 'ok',
@@ -226,7 +226,7 @@ function buildChainChecks(ctx: {
         {
             name: 'wallet balance >= minFreeBalance',
             run: async () => {
-                const balance = await ctx.runtime.client.call((c) => c.getBalance(walletAddr));
+                const balance = await ctx.runtime.client.getBalance(walletAddr);
                 const balanceTon = fromNano(balance);
                 const minTon = fromNano(minFree);
                 if (balance >= minFree) {

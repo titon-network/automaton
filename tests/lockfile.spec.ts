@@ -1,3 +1,7 @@
+// Single-instance lockfile: acquire/release/inspect across live-pid,
+// stale-pid (auto-cleanup), corrupt-file (refuse), and concurrent-creator
+// (EEXIST) cases. PID-based, no external dependencies.
+
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';

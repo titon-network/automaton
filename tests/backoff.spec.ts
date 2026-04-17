@@ -1,3 +1,7 @@
+// Retry + backoff primitives: jitteredBackoff growth/cap/bounds behaviour,
+// abortableRetry happy path + shouldRetry + onRetry observer + AbortSignal
+// cancellation + injected sleep/random for determinism.
+
 import {
     abortableRetry,
     jitteredBackoff,

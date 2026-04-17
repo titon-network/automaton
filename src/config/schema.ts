@@ -53,6 +53,12 @@ export const ConfigSchema = z.object({
     maxGasPerExecute: TonAmount,
     minFreeBalance: TonAmount,
     logLevel: LogLevelSchema,
+    // Per-consumer-product enable flags. The automaton is shared across all
+    // ForgeTON-admitted consumers — each product adds its own event decoder,
+    // worker cycle, and schema-version pin. `kronos` is the only live product
+    // today (Phase D); `fortuna` is reserved for Phase E and must be `false`
+    // until fortuna-sdk ships. `buildChainRuntime` enforces the allowed
+    // shape at load time so a stale config doesn't silently skip Kronos.
     products: z.object({
         kronos: z.boolean(),
         fortuna: z.boolean(),

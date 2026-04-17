@@ -1,3 +1,9 @@
+// collectChainSnapshot: shared read-path used by `automaton status` and
+// the daemon's gauge-snapshot cadence. Covers the preflight short-circuit,
+// per-field best-effort error capture (tryAsync), activeAutomatonCount
+// sourced from the REGISTRY (not pool — see snapshot.ts comment), and the
+// preflightProbe: false bypass for hot-path daemon calls.
+
 import { Address, toNano } from '@ton/core';
 import type { AutomatonInfo } from 'forgeton-sdk';
 import type { ChainRuntime } from '../src/chain';
@@ -16,19 +22,13 @@ function makeRuntime(overrides: {
     poolSchema?: number | Error;
 }): ChainRuntime {
     const client = {
-        call: async (fn: (c: unknown) => Promise<unknown>) => {
-            // Intercept the two call sites: getMasterchainInfo (preflight)
-            // and getBalance (raw call from the snapshot).
-            const probe = fn.toString();
-            if (probe.includes('getMasterchainInfo')) {
-                if (overrides.preflightError) throw overrides.preflightError;
-                return { latestSeqno: 1 };
-            }
-            if (probe.includes('getBalance')) {
-                if (overrides.balance instanceof Error) throw overrides.balance;
-                return overrides.balance;
-            }
-            throw new Error('unexpected client.call');
+        getMasterchainInfo: async () => {
+            if (overrides.preflightError) throw overrides.preflightError;
+            return { latestSeqno: 1 };
+        },
+        getBalance: async () => {
+            if (overrides.balance instanceof Error) throw overrides.balance;
+            return overrides.balance;
         },
     };
     const pool = {
@@ -36,16 +36,16 @@ function makeRuntime(overrides: {
             if (overrides.automaton instanceof Error) throw overrides.automaton;
             return overrides.automaton ?? null;
         },
-        getAutomatonCount: async () => {
-            if (overrides.activeCount instanceof Error) throw overrides.activeCount;
-            return overrides.activeCount ?? 0n;
-        },
         getStorageVersion: async () => {
             if (overrides.poolSchema instanceof Error) throw overrides.poolSchema;
             return overrides.poolSchema ?? 1;
         },
     };
     const registry = {
+        getActiveAutomatonCount: async () => {
+            if (overrides.activeCount instanceof Error) throw overrides.activeCount;
+            return overrides.activeCount ?? 0n;
+        },
         getSyncesReceived: async () => {
             if (overrides.syncesReceived instanceof Error) throw overrides.syncesReceived;
             return overrides.syncesReceived ?? 0n;

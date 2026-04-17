@@ -1,3 +1,7 @@
+// CheckpointState JSON round-trip: schema-version rejection, malformed JSON,
+// null-entry preservation (explicitly "no checkpoint yet"), atomic-write
+// file mode (0600), roundtrip through withCheckpoint / getCheckpoint.
+
 import { existsSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';

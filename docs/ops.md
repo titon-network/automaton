@@ -119,20 +119,30 @@ The daemon exposes Prometheus metrics at `http://<metricsHost>:<metricsPort>/met
 
 | Metric | Type | What it tells you |
 |---|---|---|
-| `automaton_execute_attempts_total{reason}` | counter | Every Execute tx we fired, labelled by the decide-tree reason. |
+| `automaton_execute_attempts_total{reason}` | counter | Every Execute tx we fired, labelled by the decide-tree `reason`. |
 | `automaton_execute_success_total{reason}` | counter | Executions that verified on-chain. |
-| `automaton_execute_failure_total{reason, errorClass}` | counter | Failed Executes, bounded error classes (`rpc-timeout`, `pool-rejected`, `tx-attribution`, `confirmation-timeout`, `verify-failed`, `other`). |
+| `automaton_execute_failure_total{reason, errorClass}` | counter | Failed Executes labelled by both `reason` and `errorClass`. |
 | `automaton_skip_total{reason}` | counter | Jobs skipped with no submission. |
 | `automaton_in_flight_collision_total` | counter | Cycles where a jobId was still mid-submit from a prior tick. |
 | `automaton_wallet_balance_ton` | gauge | Live wallet balance (updated every `gaugeSnapshotEveryNTicks`). |
-| `automaton_stake_ton` · `automaton_active` · `automaton_slash_count` | gauge | Pool-side automaton state. |
-| `automaton_pool_active_count` | gauge | Total active automatons — affects rotation. |
-| `automaton_registry_syncs_received` · `_slashes_requested` | gauge | Drift counters. Compare against pool-side totals to catch lost messages. |
+| `automaton_stake_ton` · `automaton_active` · `automaton_slash_count` | gauge | Pool-side automaton state for this wallet. |
+| `automaton_pool_active_count` | gauge | Total active automatons in the registry mirror — affects assignment rotation. |
+| `automaton_registry_syncs_received` · `automaton_registry_slashes_requested` | gauge | Drift counters. Compare against pool-side totals to catch lost messages. |
 | `automaton_cycle_duration_seconds` | histogram | End-to-end tick duration. |
 | `automaton_last_cycle_completed_at_seconds` | gauge | Unix time of the last successful cycle. Drives `/healthz`. |
 | `automaton_self_slash_total` | counter | How many times this wallet was slashed. Alerting gold. |
-| `automaton_events_dispatched_total{source, kind}` | counter | Event pump throughput. |
+| `automaton_events_dispatched_total{source}` | counter | Event pump throughput, labelled by `source`. |
 | `automaton_drain_capped_total{source}` | counter | Fired when the event drain hits `maxPages` — backlog exceeded the ceiling. |
+
+### Label domains
+
+Labels stay bounded — the code pins every one to a finite enum so Prometheus cardinality doesn't explode.
+
+| Label | Domain | Source |
+|---|---|---|
+| `reason` | `never-executed` · `primary-self` · `primary-other` · `fallback` · `too-early` · `too-late` · `expired` · `inactive` · `underfunded` · `no-rotation` | `Decision['reason']` in `src/worker/decide.ts` |
+| `errorClass` | `rpc-timeout` · `pool-rejected` · `tx-attribution` · `confirmation-timeout` · `verify-failed` · `other` | `ExecuteFailureClass` in `src/observability/index.ts` |
+| `source` | `registry` · `pool` | `drainEvents` source tag in `src/worker/events.ts` |
 
 **Alerting suggestions** (wire into your Alertmanager):
 - `rate(automaton_execute_failure_total[5m]) > 0` — one bad cycle is fine; sustained failures aren't.

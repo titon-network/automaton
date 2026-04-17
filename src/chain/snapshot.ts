@@ -71,7 +71,7 @@ export async function collectChainSnapshot(
 
     if (preflightProbe) {
         try {
-            await runtime.client.call((c) => c.getMasterchainInfo());
+            await runtime.client.getMasterchainInfo();
         } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
             errors.push(`chain unreachable: ${message}`);
@@ -79,10 +79,15 @@ export async function collectChainSnapshot(
         }
     }
 
+    // NB: activeAutomatonCount comes from the REGISTRY's mirror, not from
+    // pool.getAutomatonCount. The pool's counter is zombie-inclusive
+    // (includes fully-unstaked addresses still in the map); the registry's
+    // is what `decide` uses for assignment rotation. See
+    // src/worker/mirror.ts for the source-of-truth rationale.
     const coreReads = [
-        tryAsync('balance', errors, () => runtime.client.call((c) => c.getBalance(walletAddr))),
+        tryAsync('balance', errors, () => runtime.client.getBalance(walletAddr)),
         tryAsync('automaton', errors, () => runtime.pool.getAutomaton(walletAddr)),
-        tryAsync('automaton count', errors, () => runtime.pool.getAutomatonCount()),
+        tryAsync('active automaton count', errors, () => runtime.registry.getActiveAutomatonCount()),
         tryAsync('syncesReceived', errors, () => runtime.registry.getSyncesReceived()),
         tryAsync('slashesRequested', errors, () => runtime.registry.getSlashesRequested()),
     ] as const;

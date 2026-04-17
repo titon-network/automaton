@@ -1,3 +1,9 @@
+// Orchestrator-level smoke: verify `tickOnce` composes drainEvents +
+// runWorkerCycle correctly. Full end-to-end coverage against a sandbox
+// is in Integration.spec.ts; this spec pins the unit-level composition
+// (counters / metrics increment wiring, no-op cycle identity, decision
+// path reaches submitExecute).
+
 import { Address, toNano } from '@ton/core';
 import type { JobData, RegistryConfigReply } from 'kronos-sdk';
 import type { ChainRuntime } from '../src/chain';
@@ -7,10 +13,6 @@ import { emptyCheckpointState } from '../src/worker/checkpoint';
 import { createDaemonMetrics } from '../src/daemon/metrics';
 import { tickOnce } from '../src/daemon/orchestrator';
 import { NOOP_COUNTERS, SILENT_LOGGER } from '../src/worker/loop';
-
-// Orchestrator-level smoke: verify `tickOnce` composes drainEvents +
-// runWorkerCycle correctly. Full orchestrator integration against a
-// sandbox is D.15 work; this is the unit-level confidence test.
 
 const ME = Address.parse('0QBsK1tN7AiqL_Hovc1p6HdWC8tYFZ4wt-Jch1vg9arryx5N');
 const TARGET = Address.parse('0QD7zcV7CJWCIPf728h3ill4hgCcQreptkVaaLJJGrMEh3Bb');

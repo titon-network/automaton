@@ -25,7 +25,7 @@
 
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'http';
 import type { Registry } from 'prom-client';
-import type { WorkerLogger } from '../worker/loop';
+import type { WorkerLogger } from '../observability';
 
 const PROM_CONTENT_TYPE = 'text/plain; version=0.0.4; charset=utf-8';
 

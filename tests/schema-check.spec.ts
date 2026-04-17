@@ -1,3 +1,7 @@
+// checkSchemaVersions: compares deployed storageVersion getters against
+// the SDK constants. Happy path + either-side mismatch + fetcher error
+// propagation + the per-case message text (SDK-newer-vs-contract-newer).
+
 import { Address } from '@ton/core';
 import { FORGETON_STORAGE_VERSION } from 'forgeton-sdk';
 import { REGISTRY_STORAGE_VERSION } from 'kronos-sdk';

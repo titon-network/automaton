@@ -224,6 +224,34 @@ The wallet external message lands, but the internal Execute reverts. Read the `e
 
 ---
 
+## Typed error reference
+
+The daemon surfaces ~15 named error classes. If you see one in a log line and don't know where to look, find it here.
+
+| Error class | Source | Symptom | See |
+|---|---|---|---|
+| `ConfigNotFoundError` | `src/config/load.ts` | `config not found at <path>` | Run `automaton init` |
+| `ConfigValidationError` | `src/config/load.ts` | `config at <path> failed validation: …` | Fix the listed schema issues, or delete + re-init |
+| `ConfigEnvOverlayError` | `src/config/load.ts` | `AUTOMATON_<VAR> must be …` | Fix the shell export; allow-list is `AUTOMATON_NETWORK` / `AUTOMATON_METRICS_PORT` / `AUTOMATON_LOG_LEVEL` |
+| `KeystoreNotFoundError` | `src/wallet/keystore.ts` | `keystore not found at <path>` | Run `automaton init` |
+| `KeystoreValidationError` | `src/wallet/keystore.ts` | `keystore at <path> failed validation: …` | The wallet file shape doesn't match `KEYSTORE_VERSION`; rebuild via init |
+| `WrongPasswordError` | `src/wallet/keystore.ts` | `keystore decryption failed — wrong password or corrupt data` | Try the password again; AES-GCM auth tag can't distinguish wrong-password vs ciphertext tamper |
+| `LockHeldError` | `src/chain/lockfile.ts` | `automaton is already running: pid X` | Another daemon holds the lock (exits with code 75) |
+| `LockCorruptError` | `src/chain/lockfile.ts` | `lock file at <path> is corrupt` | Hand-edit or partial write; after confirming no automaton is running, `rm` the file |
+| `DeploymentNotAvailableError` | `src/chain/deployment.ts` | `Kronos mainnet deployment is not yet live` | Run on testnet; wait for mainnet deploy |
+| `ProductsNotSupportedError` | `src/chain/runtime.ts` | `config.products.kronos is false …` / `config.products.fortuna is true …` | Reset `config.products` to `{ kronos: true, fortuna: false }` |
+| `SchemaMismatchError` | `src/chain/schema-check.ts` | `contract schema mismatch — refusing to start` | Error message names which side is ahead; upgrade the binary or wait for deploy |
+| `PoolRejectedError` | `src/chain/submit.ts` | `the wallet tx landed but the pool rejected the internal message: …` | Read the wrapped reason — stake-side means the pool reverted; daemon-side `errorClass=verify-failed` means post-state didn't advance |
+| `TxAttributionError` | `src/chain/submit.ts` | `seqno advanced … but the wallet-initiated tx could not be located` | Race with an unrelated inbound tx; check the explorer, tx almost certainly landed |
+| `ConfirmationTimeoutError` | `src/chain/submit.ts` | `seqno did not advance within 60000ms` | Flaky RPC; retry, check doctor |
+| `AllEndpointsFailedError` | `src/chain/ton-client.ts` | `all N endpoint(s) failed after M attempt(s)` | Upstream outage or rate limit; add endpoints or wait |
+| `CheckpointStateError` | `src/worker/checkpoint.ts` | `state at <path> is malformed: …` OR `stored checkpoint hash does not match tx at lt=…` | Shape corruption or cross-deployment pollution; `rm ~/.titon/automaton/state.json` and restart |
+| `RetryAbortedError` | `src/errors/backoff.ts` | `retry aborted after N attempt(s)` | Caller aborted the retry via SIGTERM; benign during shutdown |
+| `NotInteractiveError` | `src/cli/prompt.ts` | `stdin is not a TTY` | Pass CLI flags or set `AUTOMATON_PASSWORD`; see init docs |
+| `AbortError` | `src/daemon/loop.ts` | `aborted` (internal) | Propagates SIGTERM/SIGINT cancellation; benign during shutdown |
+
+---
+
 ## Still stuck?
 
 - Check [CLAUDE.md](../CLAUDE.md) for the architecture + navigator tables.

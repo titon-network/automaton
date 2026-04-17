@@ -52,10 +52,19 @@ describe('automaton CLI scaffold', () => {
     });
 
     it('stub subcommands exit non-zero with a "not implemented" message', () => {
-        for (const cmd of ['init', 'status', 'run']) {
+        for (const cmd of ['status', 'run']) {
             const { stdout, status } = run([cmd]);
             expect(status).not.toBe(0);
             expect(stdout).toContain('not implemented yet');
         }
+    });
+
+    it('init without flags exits non-zero (interactive mode, no TTY in test)', () => {
+        // Without flags, init tries to prompt. execFileSync pipes stdin so it
+        // is not a TTY — init should surface the NotInteractiveError clearly
+        // rather than hang or succeed silently.
+        const { stdout, status } = run(['init']);
+        expect(status).not.toBe(0);
+        expect(stdout.toLowerCase()).toMatch(/not a tty|tty/);
     });
 });

@@ -7,6 +7,7 @@
 | Task | Primary file(s) | Supporting |
 |------|-----------------|------------|
 | Add a new CLI subcommand | `src/cli/commands/<name>.ts` | Register via `registerXCommand(program)` in `src/cli/index.ts`; follow the stub pattern (each file is one command tree) |
+| Add an interactive prompt | `src/cli/prompt.ts` | `promptText` / `promptChoice` / `promptConfirm` — all throw `NotInteractiveError` on non-TTY; use a flag escape hatch for CI |
 | Add a new config field | `src/config/schema.ts` | If runtime-tunable, add env override in `src/config/load.ts` (`applyEnvOverlay`); default goes in `defaultConfig()`; bump `CONFIG_VERSION` if semantics change |
 | Add an env var override | `src/config/load.ts` | Narrow allow-list — `applyEnvOverlay` re-uses schema validators so types stay honest |
 | Change where a file lives | `src/config/paths.ts` | Every filesystem path lives here as a pure function (re-reads env per call) |
@@ -106,9 +107,10 @@ src/
   cli/
     index.ts                 # commander entry point — wires every subcommand
     version.ts               # reads package.json at runtime
+    prompt.ts                # readline-based text/choice/confirm prompts — all throw on non-TTY
     commands/
       doctor.ts              # environment + config + keystore checks
-      init.ts                # stub until D.5
+      init.ts                # interactive + flag-driven first-run setup (network, new/import wallet, password, write config+keystore)
       status.ts              # stub until D.6
       stake.ts               # stub until D.7 (register / increase / unstake / cancel / withdraw)
       run.ts                 # stub until D.10 (daemon)
@@ -138,6 +140,7 @@ tests/
   ton-client.spec.ts         # isTransientError taxonomy; retry/rotate/backoff; AllEndpointsFailedError
   lockfile.spec.ts           # acquire/release/inspect; live pid / stale pid / corrupt / missing
   schema-check.spec.ts       # ok case; either-side mismatch; error message content; propagates fetcher errors
+  init.spec.ts               # non-interactive end-to-end, idempotence, flag validation, mnemonic + password file parsing
 package.json                 # bin: automaton; file: deps on ../kronos/sdk and ../forgeton/sdk
 tsconfig.json                # strict + isolatedModules + NodeNext + ES2022, outDir dist/
 jest.config.ts               # --runInBand, 1 GB heap, 30s timeout, globalSetup=preflight
@@ -214,6 +217,16 @@ Before the daemon does anything useful, `checkSchemaVersions` reads `storageVers
 
 The check takes an optional `fetcher` so tests exercise the comparison logic without standing up a sandbox. Production wires the default fetcher, which `client.open(...)` the SDK contract classes and calls `getStorageVersion()`.
 
+### `init` is idempotent, TTY-aware, and CI-friendly
+
+`automaton init` covers both the interactive operator flow and the non-interactive CI flow with the same code path. Three flags (`--network`, `--import-mnemonic <file>`, `--password-file <file>`) turn each prompt off individually; pass all three and no prompt fires. Partial sets narrow the flow (e.g. `--network=testnet` alone skips only step 1).
+
+Idempotence: if `config.json` OR `wallet.enc` already exists, `init` refuses with a message listing every path that would be overwritten. Operators re-run after `rm`ing both, or point at a clean `TITON_HOME`.
+
+Write ordering: keystore first, config second. If the keystore write fails mid-run, no config file points at a missing wallet.
+
+The "generate a new mnemonic" branch is **interactive-only by design.** The 24 words land on stdout once, then a Y/N confirmation gates whether we continue. Operators who need generation in a scripted context should mint the mnemonic out-of-band (e.g. `ton-cli`, hardware wallet export) and use `--import-mnemonic`. Printing fresh mnemonics in CI logs is the kind of footgun we will not ship by default.
+
 ### Tests use a lowered scrypt work factor
 
 Production uses `DEFAULT_KDF_N = 131072` (matches ethers.js v6 wallet default, ~300–500 ms per unlock). Tests pass `{ kdfN: 2048 }` via `LockOptions` to keep the suite fast (~4 s total). The crypto primitives exercised are identical — only the work factor differs — so tamper-vector tests still validate the security properties honestly.
@@ -224,10 +237,11 @@ Production uses `DEFAULT_KDF_N = 131072` (matches ethers.js v6 wallet default, ~
 - **D.2 (config + paths)** — done. `bdde95f`. 30 tests.
 - **D.3 (wallet keystore)** — done. `8989253`. 23 tests, 6 tamper vectors.
 - **D.4 (TON client layer)** — done. `FailoverTonClient` with retry/rotate on transient errors; `lockfile.ts` PID-based single-instance lock; `schema-check.ts` on-chain version reconciliation. 47 additional tests.
-- **Up next (D.5)** — interactive `automaton init` (creates `~/.titon/automaton/`, wallet + config).
-- **D.6–D.15** — see `../kronos/progress.md`.
+- **D.5 (init command)** — done. Interactive + flag-driven first-run setup: network + new/import wallet + password + keystore + config, all idempotent. 17 additional tests (plus a non-TTY CLI smoke test).
+- **Up next (D.6)** — `automaton status` + `automaton doctor` expansion (on-chain reachability, wallet balance, schema match, consumer admission).
+- **D.7–D.15** — see `../kronos/progress.md`.
 
-Total: **104 tests** across 6 suites. Full build + test runs in ~5 s.
+Total: **120 tests** across 7 suites. Full build + test runs in ~9 s.
 
 ## Security hardening — summary
 

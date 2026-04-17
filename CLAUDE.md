@@ -14,6 +14,10 @@
 | Change keystore format | `src/wallet/keystore.ts` | Bump `KEYSTORE_VERSION`; store migration path in the same file |
 | Change wallet derivation | `src/wallet/wallet.ts` | V5R1 is network-aware — mainnet/testnet produce different addresses from the same mnemonic; keystore must continue to carry the network |
 | Persist a new file atomically | `src/util/atomic-write.ts` | `atomicWriteFile(path, data, mode)` — used by both config and keystore; use it for any other persistent file |
+| Call a TON RPC with retry/failover | `src/chain/ton-client.ts` | `new FailoverTonClient({ endpoints, … }).call(fn)` — rotates endpoints on transient errors (timeout, 429, 5xx) with jittered exponential backoff |
+| Open a contract wrapper (registry/pool) | `src/chain/ton-client.ts` | `failover.open(KronosRegistry.createFromAddress(addr))` — every `.get*()` / `.send*()` goes through the failover machinery automatically |
+| Acquire single-instance lock | `src/chain/lockfile.ts` | `acquireLock()` at startup / `releaseLock()` at shutdown; handles live-pid contention + stale cleanup automatically |
+| Verify on-chain schema matches SDK | `src/chain/schema-check.ts` | `checkSchemaVersions({ client, registry, pool })`; refuse to start on mismatch with an upgrade-path message |
 | Write a test | `tests/*.spec.ts` | `jest --runInBand`, 1 GB per worker; `tests/preflight.ts` fails fast on SDK snapshot issues — see §Tests |
 
 **Debugging symptoms:**
@@ -28,6 +32,10 @@
 | `config not found at …` | no `config.json` yet | `automaton init` (lands in D.5) |
 | `AUTOMATON_NETWORK must be one of testnet \| mainnet` | unknown env value | Fix the shell export; overlay validates through the same zod schema as the file |
 | dist/ missing at runtime | forgot to build | `pnpm run build` |
+| `automaton is already running: pid X…` | prior `run` still holds the lock, or it crashed without cleanup | Check the pid (`ps -p X`); if dead, `rm ~/.titon/automaton/automaton.lock` |
+| `lock file at … is corrupt` | hand-edit / partial write / older version | Confirm no automaton is running, then `rm` the file |
+| `all N endpoint(s) failed after M attempt(s)` | upstream outage or all endpoints blocked (rate limit) | Check network; consider adding more endpoints to `config.endpoints`; confirm API keys are valid |
+| `contract schema mismatch — refusing to start` | deployed contract schema ≠ SDK's expected version | Upgrade `@titon/automaton` (contract newer) or wait for deploy to land (SDK newer); see message for direction |
 
 **Canonical sources (don't hand-edit):**
 
@@ -115,6 +123,11 @@ src/
     keystore.ts              # scrypt+AES-GCM lock/unlock, atomic save, zod schema
     prompt.ts                # raw-mode hidden password prompt + AUTOMATON_PASSWORD fallback
     index.ts                 # barrel
+  chain/
+    ton-client.ts            # FailoverTonClient — endpoint rotation + jittered backoff on transient errors; .call(fn) + .open(contract)
+    lockfile.ts              # PID-based single-instance lock; live/stale detection via process.kill(pid, 0)
+    schema-check.ts          # compare on-chain storageVersion getters vs REGISTRY_STORAGE_VERSION + FORGETON_STORAGE_VERSION; refuse on mismatch
+    index.ts                 # barrel
   util/
     atomic-write.ts          # tmp + chmod + rename (used by config + keystore)
 tests/
@@ -122,6 +135,9 @@ tests/
   cli.spec.ts                # CLI smoke — help, version, doctor, stub exits
   config.spec.ts             # round-trip, env overlay, schema rejection, path resolution
   wallet.spec.ts             # mnemonic, derivation, keystore round-trip + 6 tamper vectors, prompt env fallback
+  ton-client.spec.ts         # isTransientError taxonomy; retry/rotate/backoff; AllEndpointsFailedError
+  lockfile.spec.ts           # acquire/release/inspect; live pid / stale pid / corrupt / missing
+  schema-check.spec.ts       # ok case; either-side mismatch; error message content; propagates fetcher errors
 package.json                 # bin: automaton; file: deps on ../kronos/sdk and ../forgeton/sdk
 tsconfig.json                # strict + isolatedModules + NodeNext + ES2022, outDir dist/
 jest.config.ts               # --runInBand, 1 GB heap, 30s timeout, globalSetup=preflight
@@ -165,6 +181,39 @@ Defense-in-depth on unlock:
 
 `automaton doctor` checks Node version, SDK resolvability, config presence/validity, keystore presence/validity. It does NOT try to reach the chain or unlock the wallet — those are runtime concerns that belong in `status` or `run`. A failing doctor means "your install is broken"; a failing status means "your install works but the state doesn't line up with the chain."
 
+### Failover is a property of the client, not the caller
+
+`FailoverTonClient` wraps `@ton/ton`'s `TonClient`. It takes an array of endpoints, keeps one `TonClient` per endpoint, and exposes two surfaces:
+
+- **`.call(fn)`** — run any `(TonClient) => Promise<T>` through the retry/rotate logic. Used for ad-hoc ops (getBalance, sendFile, …).
+- **`.open(contract)`** — wrap a contract with `@ton/core`'s `openContract` and a custom `ContractProvider` whose every method delegates through `.call`. Every `registry.getStorageVersion()` or `pool.sendRegisterAutomaton()` call transparently inherits retry/rotate.
+
+**Transient error classification:**
+- Node network codes: `ECONNRESET`, `ECONNREFUSED`, `ECONNABORTED`, `ETIMEDOUT`, `ENOTFOUND`, `EAI_AGAIN`, `EPIPE`, `ERR_NETWORK`.
+- HTTP 429 (rate limit) + 5xx.
+- Everything else (4xx non-429, malformed response, exit-code throws) is permanent — re-throw immediately.
+
+**Backoff:** equal-jitter exponential — `sleep = base·2^(n−1)/2 + rand[0, base·2^(n−1)/2)`, capped at `maxBackoffMs`. Prevents N automatons retrying the same upstream in lockstep.
+
+On `maxAttempts` exhaustion, the last transient error gets wrapped in `AllEndpointsFailedError` with attempt count + endpoint list attached, so logs show the full picture.
+
+### Single-instance lock via PID
+
+`~/.titon/automaton/automaton.lock` holds `{ version, pid, startedAt }`. Acquire:
+1. `open(path, 'wx')` — atomic "create-only"; EEXIST if contended.
+2. On EEXIST, read the existing lock. If `process.kill(pid, 0)` says the PID is alive → throw `LockHeldError`. If dead → unlink and retry (once).
+3. Second EEXIST after unlink = race with another stale-cleaner → throw loudly.
+
+Release is idempotent and checks the stored PID matches ours before unlinking. Corrupt locks are never auto-removed; the error text tells the operator how to clean up.
+
+One inherent limitation: PID reuse. If the OS recycled the recorded PID onto an unrelated process, we refuse to start. That's safer than the inverse (two automatons racing), and the `startedAt` timestamp gives operators the signal to `rm` stale locks manually.
+
+### Schema check gates startup
+
+Before the daemon does anything useful, `checkSchemaVersions` reads `storageVersion` from both registry + pool and compares against the `REGISTRY_STORAGE_VERSION` + `FORGETON_STORAGE_VERSION` constants exported by the bundled SDKs. Mismatch → `SchemaMismatchError` with guidance ("SDK newer than contract" vs "contract newer than SDK"). We would rather refuse to start than silently misinterpret on-chain state after a contract upgrade has propagated without a matching SDK bump.
+
+The check takes an optional `fetcher` so tests exercise the comparison logic without standing up a sandbox. Production wires the default fetcher, which `client.open(...)` the SDK contract classes and calls `getStorageVersion()`.
+
 ### Tests use a lowered scrypt work factor
 
 Production uses `DEFAULT_KDF_N = 131072` (matches ethers.js v6 wallet default, ~300–500 ms per unlock). Tests pass `{ kdfN: 2048 }` via `LockOptions` to keep the suite fast (~4 s total). The crypto primitives exercised are identical — only the work factor differs — so tamper-vector tests still validate the security properties honestly.
@@ -174,10 +223,11 @@ Production uses `DEFAULT_KDF_N = 131072` (matches ethers.js v6 wallet default, ~
 - **D.1 (scaffold)** — done. `11574c9`.
 - **D.2 (config + paths)** — done. `bdde95f`. 30 tests.
 - **D.3 (wallet keystore)** — done. `8989253`. 23 tests, 6 tamper vectors.
-- **Up next (D.4)** — TON client layer: `FailoverTonClient` (endpoint rotation + jittered backoff), `lockfile.ts` (PID-based single-instance), `schema-check.ts` (on-chain `storageVersion` vs SDK constants).
-- **D.5–D.15** — see `../kronos/progress.md`.
+- **D.4 (TON client layer)** — done. `FailoverTonClient` with retry/rotate on transient errors; `lockfile.ts` PID-based single-instance lock; `schema-check.ts` on-chain version reconciliation. 47 additional tests.
+- **Up next (D.5)** — interactive `automaton init` (creates `~/.titon/automaton/`, wallet + config).
+- **D.6–D.15** — see `../kronos/progress.md`.
 
-Total: **57 tests** across 3 suites. Full build + test runs in ~5 s.
+Total: **104 tests** across 6 suites. Full build + test runs in ~5 s.
 
 ## Security hardening — summary
 

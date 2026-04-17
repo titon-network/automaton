@@ -49,78 +49,14 @@ import {
 // hot path.
 const WALLET_GAS_BUFFER = toNano('0.1');
 
-// Typed errors — downstream code (D.8 daemon, automation scripts) can
-// `instanceof` these to distinguish user pre-state mistakes from
-// transient chain issues. Generic `new Error(...)` everywhere would
-// force string matching, which rots.
-
-export class AlreadyRegisteredError extends Error {
-    constructor(public readonly info: AutomatonInfo) {
-        super(
-            `already registered (stake=${fromNano(info.stake)} TON, active=${info.isActive}). ` +
-                `Use \`automaton stake increase <amount>\` instead.`,
-        );
-        this.name = 'AlreadyRegisteredError';
-    }
-}
-
-export class NotRegisteredError extends Error {
-    constructor(what: string = 'operation') {
-        super(`not registered — nothing to ${what}. Run \`automaton stake register <amount>\` first.`);
-        this.name = 'NotRegisteredError';
-    }
-}
-
-export class AutomatonInactiveError extends Error {
-    constructor() {
-        super('automaton is inactive; pool rejects IncreaseStake on inactive slots.');
-        this.name = 'AutomatonInactiveError';
-    }
-}
-
-export class UnstakePendingError extends Error {
-    constructor(public readonly availableAt: number) {
-        const iso = new Date(availableAt * 1000).toISOString();
-        super(
-            `unstake is already pending (available at ${iso}). ` +
-                `Run \`automaton stake withdraw\` once the cooldown elapses, or ` +
-                `\`automaton stake cancel-unstake\` to abort.`,
-        );
-        this.name = 'UnstakePendingError';
-    }
-}
-
-export class NoPendingUnstakeError extends Error {
-    constructor() {
-        super('no pending unstake.');
-        this.name = 'NoPendingUnstakeError';
-    }
-}
-
-export class CooldownNotElapsedError extends Error {
-    constructor(public readonly availableAt: number, public readonly nowSec: number) {
-        const iso = new Date(availableAt * 1000).toISOString();
-        super(
-            `cooldown not elapsed — stake available at ${iso} ` +
-                `(${availableAt - nowSec}s remaining).`,
-        );
-        this.name = 'CooldownNotElapsedError';
-    }
-}
-
-export class InsufficientWalletBalanceError extends Error {
-    constructor(
-        public readonly balance: bigint,
-        public readonly required: bigint,
-        public readonly walletAddress: string,
-    ) {
-        super(
-            `wallet balance ${fromNano(balance)} TON is below required ${fromNano(required)} TON. ` +
-                `Fund ${walletAddress} first.`,
-        );
-        this.name = 'InsufficientWalletBalanceError';
-    }
-}
+// Stake pre-state errors use plain `Error` — the CLI top-level catch
+// surfaces `err.message` verbatim, and no code elsewhere differentiates
+// "already registered" from "not registered" programmatically (every
+// check happens in this file's `require*` predicates). Typed error
+// classes across the module boundary earn their keep only for errors
+// the daemon needs to `instanceof`-classify (PoolRejectedError,
+// ConfirmationTimeoutError, TxAttributionError, AllEndpointsFailedError,
+// LockHeldError, DeploymentNotAvailableError, SchemaMismatchError).
 
 interface StakeContext {
     config: Config;
@@ -153,23 +89,34 @@ async function loadContext(): Promise<StakeContext> {
 }
 
 // Pre-state predicates — narrow the `automaton` type so callers don't
-// need `!` assertions after these return. D.8's daemon code should use
-// the same helpers for consistent error surface.
+// need `!` assertions after these return. Any daemon-side retry code
+// should use the same helpers for a consistent error surface.
 
 function requireRegistered(ctx: StakeContext, what: string): AutomatonInfo {
-    if (ctx.automaton === null) throw new NotRegisteredError(what);
+    if (ctx.automaton === null) {
+        throw new Error(
+            `not registered — nothing to ${what}. Run \`automaton stake register <amount>\` first.`,
+        );
+    }
     return ctx.automaton;
 }
 
 function requireNoPendingUnstake(info: AutomatonInfo, ctx: StakeContext): void {
     if (info.unstakeRequestedAt !== 0) {
         const availableAt = info.unstakeRequestedAt + ctx.poolCtx.config.unstakeCooldown;
-        throw new UnstakePendingError(availableAt);
+        const iso = new Date(availableAt * 1000).toISOString();
+        throw new Error(
+            `unstake is already pending (available at ${iso}). ` +
+                `Run \`automaton stake withdraw\` once the cooldown elapses, or ` +
+                `\`automaton stake cancel-unstake\` to abort.`,
+        );
     }
 }
 
 function requirePendingUnstake(info: AutomatonInfo): void {
-    if (info.unstakeRequestedAt === 0) throw new NoPendingUnstakeError();
+    if (info.unstakeRequestedAt === 0) {
+        throw new Error('no pending unstake.');
+    }
 }
 
 async function assertWalletFunded(ctx: StakeContext, value: bigint): Promise<void> {
@@ -180,7 +127,10 @@ async function assertWalletFunded(ctx: StakeContext, value: bigint): Promise<voi
             bounceable: false,
             testOnly: ctx.config.network === 'testnet',
         });
-        throw new InsufficientWalletBalanceError(balance, required, addr);
+        throw new Error(
+            `wallet balance ${fromNano(balance)} TON is below required ${fromNano(required)} TON. ` +
+                `Fund ${addr} first.`,
+        );
     }
 }
 
@@ -208,7 +158,12 @@ async function submit(
 
 async function handleRegister(amountTon: string): Promise<void> {
     const ctx = await loadContext();
-    if (ctx.automaton !== null) throw new AlreadyRegisteredError(ctx.automaton);
+    if (ctx.automaton !== null) {
+        throw new Error(
+            `already registered (stake=${fromNano(ctx.automaton.stake)} TON, ` +
+                `active=${ctx.automaton.isActive}). Use \`automaton stake increase <amount>\` instead.`,
+        );
+    }
 
     const stake = toNano(amountTon);
     const value = registerValue(ctx.poolCtx, stake);
@@ -231,7 +186,11 @@ async function handleRegister(amountTon: string): Promise<void> {
 async function handleIncrease(amountTon: string): Promise<void> {
     const ctx = await loadContext();
     const info = requireRegistered(ctx, 'top up');
-    if (!info.isActive) throw new AutomatonInactiveError();
+    if (!info.isActive) {
+        throw new Error(
+            'automaton is inactive; pool rejects IncreaseStake on inactive slots.',
+        );
+    }
     requireNoPendingUnstake(info, ctx);
 
     const delta = toNano(amountTon);
@@ -316,7 +275,13 @@ async function handleWithdraw(): Promise<void> {
 
     const availableAt = info.unstakeRequestedAt + ctx.poolCtx.config.unstakeCooldown;
     const nowSec = Math.floor(Date.now() / 1000);
-    if (nowSec < availableAt) throw new CooldownNotElapsedError(availableAt, nowSec);
+    if (nowSec < availableAt) {
+        const iso = new Date(availableAt * 1000).toISOString();
+        throw new Error(
+            `cooldown not elapsed — stake available at ${iso} ` +
+                `(${availableAt - nowSec}s remaining).`,
+        );
+    }
 
     const amount = info.stake;
     const crossesInactive = willCrossInactive(ctx.poolCtx, info.stake, amount);

@@ -5,7 +5,8 @@
 //
 // Both `status` and `doctor` build the same bundle; extracting it here
 // means the "how to go from Config → queryable contracts" recipe lives
-// in one place. Daemon code in D.8 / D.9 / D.10 will reuse it too.
+// in one place. The worker loop, event drain, and daemon orchestrator
+// all consume the same bundle.
 
 import { ForgeTON } from 'forgeton-sdk';
 import { KronosRegistry } from 'kronos-sdk';

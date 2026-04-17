@@ -15,7 +15,15 @@
 
 import { Address } from '@ton/core';
 import type { JobData, RegistryConfigReply } from 'kronos-sdk';
-import { sendAndConfirm, senderFor, type ChainRuntime } from '../chain';
+import {
+    AllEndpointsFailedError,
+    ConfirmationTimeoutError,
+    PoolRejectedError,
+    TxAttributionError,
+    sendAndConfirm,
+    senderFor,
+    type ChainRuntime,
+} from '../chain';
 import type { AutomatonWallet } from '../wallet';
 import { AutomatonMirror } from './mirror';
 import { decide, type Decision } from './decide';
@@ -235,18 +243,14 @@ async function fetchJobsBounded(
 }
 
 function classifyExecuteFailure(err: unknown): ExecuteFailureClass {
-    if (!(err instanceof Error)) return 'other';
-    switch (err.name) {
-        case 'PoolRejectedError':
-            return 'pool-rejected';
-        case 'TxAttributionError':
-            return 'tx-attribution';
-        case 'ConfirmationTimeoutError':
-            return 'confirmation-timeout';
-        case 'AllEndpointsFailedError':
-            return 'rpc-timeout';
-    }
-    if (err.message.includes('lastExecutedAt') || err.message.includes('executionCount')) {
+    if (err instanceof PoolRejectedError) return 'pool-rejected';
+    if (err instanceof TxAttributionError) return 'tx-attribution';
+    if (err instanceof ConfirmationTimeoutError) return 'confirmation-timeout';
+    if (err instanceof AllEndpointsFailedError) return 'rpc-timeout';
+    if (
+        err instanceof Error &&
+        (err.message.includes('lastExecutedAt') || err.message.includes('executionCount'))
+    ) {
         return 'verify-failed';
     }
     return 'other';

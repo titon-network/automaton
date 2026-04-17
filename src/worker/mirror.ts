@@ -1,16 +1,24 @@
 // Cache of the registry's automaton mirror.
 //
-// D.8 ships a simple "snapshot once per cycle" implementation: every
-// `ensureFresh()` call checks `activeAutomatonCount` and, if the count
-// changed, re-snapshots by reading `getAutomatonAt(i)` for every slot.
-// That's N+1 RPC calls — acceptable when N is small (mainnet forecast
-// is <100 automatons at launch).
+// Two public methods, two different use cases:
 //
-// D.9 will subscribe to `AutomatonMirrorUpdated` events and patch this
-// cache incrementally, eliminating the per-cycle resnapshot. The cache
-// exposes a `replace` method so D.9's event tailer can swap the full
-// list, and a `pendingActiveCount` getter so the same invariant (dense
-// in [0, activeCount)) is preserved.
+//   `ensureFresh()` — called on every worker tick. Reads
+//     `registry.getActiveAutomatonCount()` and SKIPS the N-slot fetch
+//     when the count hasn't changed (the common case — most ticks
+//     don't see a membership change). N+1 RPC calls on change; 1 on
+//     no-change.
+//
+//   `refresh()` — called by the `mirrorPatchHandler` when an
+//     `AutomatonMirrorUpdated` event fires. Unconditional re-read —
+//     the event tells us the mirror changed, so we don't rely on the
+//     count-comparison heuristic (swap-and-pop moves addresses
+//     between slots without changing the count, and the event is
+//     authoritative).
+//
+// Source of truth is `registry.getActiveAutomatonCount()` (what
+// `decide` ultimately resolves assignment against), NOT
+// `pool.getAutomatonCount` which is the pool's zombie-inclusive
+// lifetime counter.
 
 import type { Address } from '@ton/core';
 import type { ChainRuntime } from '../chain';
@@ -32,16 +40,9 @@ export class AutomatonMirror {
     }
 
     /**
-     * Refresh if the cached snapshot is out of date. Reads
-     * `registry.getActiveAutomatonCount()` (what `decide` actually resolves
-     * against — NOT `pool.getAutomatonCount`, which is the pool's
-     * zombie-inclusive lifetime counter). If the active count matches the
-     * last snapshot size, we skip the per-slot fetch.
-     *
-     * Swap-and-pop can move addresses between slots without changing the
-     * count; we accept that drift for D.8 (stale-slot Execute simply
-     * fails the tx and the next cycle fixes it). D.9's event tailer will
-     * land exact consistency via `replace()`.
+     * Refresh if the active count has changed since the last snapshot.
+     * The common case (no membership change) is cheap — 1 RPC call
+     * for the count, early return. On change, a full re-read runs.
      */
     async ensureFresh(): Promise<void> {
         const count = await this.runtime.registry.getActiveAutomatonCount();
@@ -52,8 +53,10 @@ export class AutomatonMirror {
     }
 
     /**
-     * Force a full re-read from the registry's mirror. N+1 RPC calls
-     * (1 for the count if `activeCount` not supplied, N for the slots).
+     * Unconditional full re-read from the registry's mirror. Use from
+     * event handlers where the event is authoritative proof that
+     * something changed (swap-and-pop can move addresses without
+     * changing the count, so `ensureFresh` alone can miss it).
      */
     async refresh(activeCount?: bigint): Promise<void> {
         const count =
@@ -72,15 +75,5 @@ export class AutomatonMirror {
         }
         this.addresses = next;
         this.lastKnownCount = count;
-    }
-
-    /**
-     * Replace the cached mirror wholesale (used by D.9's event tailer).
-     * `activeCount` is stored verbatim; no consistency check here — the
-     * caller is expected to pass a coherent `(count, addresses)` pair.
-     */
-    replace(addresses: readonly Address[], activeCount: bigint): void {
-        this.addresses = [...addresses];
-        this.lastKnownCount = activeCount;
     }
 }

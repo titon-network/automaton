@@ -1,7 +1,7 @@
 import { Address, toNano } from '@ton/core';
 import type { JobData, RegistryConfigReply } from 'kronos-sdk';
 import type { AutomatonWallet } from '../src/wallet';
-import type { ChainRuntime } from '../src/chain';
+import { PoolRejectedError, type ChainRuntime } from '../src/chain';
 import { AutomatonMirror } from '../src/worker/mirror';
 import { NOOP_COUNTERS, runWorkerCycle } from '../src/worker/loop';
 
@@ -328,21 +328,13 @@ describe('runWorkerCycle', () => {
         expect(collisions).toBe(1);
     });
 
-    it('classifies failure types into bounded error classes (not raw strings)', async () => {
+    it('classifies failure types into bounded error classes via instanceof', async () => {
         const runtime = buildFakeRuntime({
             jobs: new Map([[0n, mkJob()]]),
             mirror: [ME],
         });
 
         const classes: string[] = [];
-        // Fake a PoolRejectedError — has the `.name` property the classifier reads.
-        class FakePoolRejected extends Error {
-            constructor() {
-                super('pool said no');
-                this.name = 'PoolRejectedError';
-            }
-        }
-
         await runWorkerCycle({
             runtime,
             wallet: fakeWallet(),
@@ -356,7 +348,10 @@ describe('runWorkerCycle', () => {
                 },
             },
             submitExecute: async () => {
-                throw new FakePoolRejected();
+                // Real PoolRejectedError — classifyExecuteFailure checks
+                // `instanceof`, not string-equality on `.name`, so a
+                // minifier renaming the class can't silently break it.
+                throw new PoolRejectedError(new Error('pool said no'), 'abc123');
             },
         });
 
@@ -481,11 +476,4 @@ describe('AutomatonMirror', () => {
         await expect(mirror.ensureFresh()).rejects.toThrow(/mirror inconsistent/);
     });
 
-    it('replace() installs a new snapshot without a fetch', () => {
-        const runtime = buildFakeRuntime();
-        const mirror = new AutomatonMirror(runtime);
-        mirror.replace([ME, OTHER], 2n);
-        expect(mirror.snapshot).toEqual([ME, OTHER]);
-        expect(mirror.activeCount).toBe(2n);
-    });
 });

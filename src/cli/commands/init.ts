@@ -292,7 +292,7 @@ function printSuccess(details: {
             `  Next steps:\n` +
             `    automaton doctor                 # verify install\n` +
             `    # Fund the wallet address above with at least ${minFund} TON (${minStake} stake + 1 gas reserve).\n` +
-            `    automaton stake register         # register on-chain as an automaton (Phase D.7)\n` +
-            `    automaton run                    # start the daemon (Phase D.10)\n`,
+            `    automaton stake register <amount>  # register on-chain with collateral\n` +
+            `    automaton run                      # start the daemon\n`,
     );
 }

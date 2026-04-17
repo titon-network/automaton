@@ -109,6 +109,13 @@ export async function drainEvents(deps: DrainEventsDeps): Promise<DrainEventsRes
         );
         if (capped) fullyCaughtUp[source] = false;
 
+        // Track whether any handler threw during this source's dispatch.
+        // If so, we REFUSE to advance the checkpoint past this batch —
+        // replaying the same events next tick is safe (handlers are
+        // claimed idempotent; the drain's checkpoint + handler contract
+        // is "at-least-once"), and the alternative is silently losing
+        // events that a transient handler failure swallowed.
+        let handlerThrew = false;
         for (const tx of txs) {
             const ctx: TxContext = {
                 txHash: tx.hash().toString('hex'),
@@ -125,8 +132,8 @@ export async function drainEvents(deps: DrainEventsDeps): Promise<DrainEventsRes
             for (const event of events) {
                 // Per-handler isolation: a buggy user handler shouldn't
                 // abort the whole drain. Errors are logged and the loop
-                // continues; the checkpoint still advances so we don't
-                // spin on the same bad event every cycle.
+                // continues (so other handlers get the event), but we
+                // set `handlerThrew` to gate the checkpoint advance.
                 for (const h of deps.handlers) {
                     try {
                         if (source === 'registry') {
@@ -139,8 +146,9 @@ export async function drainEvents(deps: DrainEventsDeps): Promise<DrainEventsRes
                             }
                         }
                     } catch (err) {
+                        handlerThrew = true;
                         const msg = err instanceof Error ? err.message : String(err);
-                        logger.error(`event handler threw (continuing)`, {
+                        logger.error(`event handler threw (continuing; checkpoint NOT advancing)`, {
                             source,
                             kind: event.kind,
                             txHash: ctx.txHash,
@@ -152,16 +160,20 @@ export async function drainEvents(deps: DrainEventsDeps): Promise<DrainEventsRes
             }
         }
 
-        // Update checkpoint to the newest tx we processed.
+        // Advance checkpoint only when every handler succeeded. On
+        // handler throw we replay the batch next tick — handlers are
+        // contract-idempotent (mirror.refresh, selfSlash webhook dedupes
+        // on txHash, consumerWatch is pure log) so replay is the safe
+        // failure mode. The alternative — advancing past events a
+        // handler swallowed — silently loses alerts; the orchestrator's
+        // self-slash webhook is the most sensitive caller here.
         //
-        // Known limitation on cap: when `capped === true`, events older
-        // than `oldest(txs).prevTransactionLt` exist but were not fetched.
-        // Advancing the checkpoint past them means those events are
-        // orphaned permanently. With DEFAULT_PAGE_SIZE × DEFAULT_MAX_PAGES
-        // = 500 txs this is unlikely in practice; when it happens we log
-        // at error level so the operator can scale pageSize/maxPages via
-        // deps. A robust tail-pointer design lands in a later phase.
-        if (txs.length > 0) {
+        // Known limitation on `capped`: events older than
+        // `oldest(txs).prevTransactionLt` were not fetched. Events
+        // beyond the pageSize*maxPages cap (default 500) are orphaned
+        // unless the operator widens the window. Tracked as `drainCapped`
+        // counter for alerting; full tail-pointer fix is future work.
+        if (txs.length > 0 && !handlerThrew) {
             const newest = txs[txs.length - 1]!;
             state = withCheckpoint(state, key, {
                 lt: newest.lt.toString(),

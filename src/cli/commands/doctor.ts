@@ -12,7 +12,9 @@
 // install is broken" — which is a different class of problem from "your
 // config says X but chain says Y".
 
+import { existsSync } from 'fs';
 import { Command } from 'commander';
+import { configPath, loadConfig } from '../../config';
 import { pkgVersion } from '../version';
 
 interface Check {
@@ -56,6 +58,19 @@ const checks: Check[] = [
     {
         name: 'package version readable',
         run: () => pkgVersion(),
+    },
+    {
+        name: 'config',
+        run: () => {
+            const path = configPath();
+            if (!existsSync(path)) {
+                // Not an error at this stage — `automaton init` creates one.
+                // Report as "absent" so operator knows where doctor looked.
+                return `absent at ${path} (run \`automaton init\`)`;
+            }
+            const cfg = loadConfig(path);
+            return `${path} — network=${cfg.network}, endpoints=${cfg.endpoints.length}`;
+        },
     },
 ];
 

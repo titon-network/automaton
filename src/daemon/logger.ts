@@ -8,6 +8,15 @@
 // that redaction path. The existing call sites (~45 as of this
 // writing) all follow that convention; new ones should too.
 //
+// Stack traces are an exception worth calling out: pino redacts by
+// KEY, not by string content. If a caller logs `{ stack: err.stack }`,
+// anything embedded in the stack string — V8's auto-captured locals,
+// operator-custom `Error.prepareStackTrace` output, or an error whose
+// `toString` embedded a secret — flows through verbatim. Don't pass
+// raw errors/stacks that could have touched keystore state; wrap them
+// in `err.message`-only surfaces first. The uncaught-exception path
+// accepts the tradeoff (operators need stacks to debug crashes).
+//
 // Level filtering via `LogLevel` from config/schema.ts — trace < debug
 // < info < warn < error. Defaults to info.
 

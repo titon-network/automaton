@@ -27,6 +27,8 @@
 | Change daemon log format | `src/daemon/logger.ts` | `createPinoLogger({ level })` is the production default (with redacted paths). `createConsoleLogger` is a simpler alternative for tests |
 | Add a new metric | `src/daemon/metrics.ts` | Add to the one returned `DaemonMetrics` bundle; document in the `help` string; use bounded labels only |
 | Change health/readiness semantics | `src/daemon/http.ts` | `/healthz` reads `liveness()` (staleness-gated), `/readyz` reads `readiness()` (array of subchecks). Both called fresh per request |
+| Add a retry-with-backoff to any async op | `src/errors/backoff.ts` | `abortableRetry(fn, { maxAttempts, baseBackoffMs, maxBackoffMs, signal, shouldRetry })` — AbortSignal-aware so shutdown cancels retries immediately |
+| Explain a TVM exit code to an operator | `src/errors/explain.ts` | `explainExitCode(n)` returns `{code, origin, name, message, hint?}` — picks the right SDK (kronos 100-119 / forgeton 160-182 / tvm 1-100); `extractExitCode(err)` pulls it off SDK errors or parses `exit code N` out of sandbox error strings |
 | Change keystore format | `src/wallet/keystore.ts` | Bump `KEYSTORE_VERSION`; store migration path in the same file |
 | Change wallet derivation | `src/wallet/wallet.ts` | V5R1 is network-aware — mainnet/testnet produce different addresses from the same mnemonic; keystore must continue to carry the network |
 | Persist a new file atomically | `src/util/atomic-write.ts` | `atomicWriteFile(path, data, mode)` — used by both config and keystore; use it for any other persistent file |
@@ -137,6 +139,10 @@ src/
     events.ts                # drainEvents(deps) — pages txs backward to checkpoint; decodes external-out bodies via both SDKs; dispatches
     handlers.ts              # built-in event handlers: mirrorPatchHandler / selfSlashHandler (w/ webhook + onSelfSlash hook) / consumerWatchHandler
     index.ts                 # barrel
+  errors/
+    backoff.ts               # jitteredBackoff + abortableRetry — AbortSignal-aware; shared by any async op that wants bounded retry
+    explain.ts               # explainExitCode + extractExitCode + formatExplanation — unified TVM-exit-code → human text
+    index.ts                 # barrel
   daemon/
     logger.ts                # createPinoLogger (redacted: password/mnemonic/privateKey/seed/secretKey) + createConsoleLogger (tests)
     loop.ts                  # abortableSleep / loopCycles (with exponential backoff) / waitForDrain — cancellable primitives
@@ -190,6 +196,8 @@ tests/
   logger.spec.ts             # pino redaction (top-level + nested secret paths); level filter; timestamp/level emission
   metrics.spec.ts             # prom-client registry exports every declared name; counter-label propagation; per-instance isolation
   http.spec.ts               # /metrics content-type + body; /healthz fresh/stale/unstarted; /readyz all-ok + any-fail; 404/405/querystring routing
+  backoff.spec.ts            # jitteredBackoff growth/cap/bounds; abortableRetry happy/fail/shouldRetry/onRetry/abort-signal/injected-sleep
+  explain.spec.ts            # explainExitCode picks kronos vs forgeton vs tvm vs unknown; formatExplanation hint rendering; extractExitCode shapes
 package.json                 # bin: automaton; file: deps on ../kronos/sdk and ../forgeton/sdk
 tsconfig.json                # strict + isolatedModules + NodeNext + ES2022, outDir dist/
 jest.config.ts               # --runInBand, 1 GB heap, 30s timeout, globalSetup=preflight
@@ -259,6 +267,16 @@ D.8 splits the execution logic into three layers:
 3. **Daemon (D.10, not yet landed)** — wraps `runWorkerCycle` in `setInterval(pollIntervalMs)` + lockfile acquisition + SIGINT/SIGTERM handlers.
 
 `submitExecute` on `WorkerDeps` is injectable specifically so tests can exercise the decision path without a live sandbox — production passes `defaultSubmitExecute` (the real `sendAndConfirm` + post-state verify); tests pass a no-op or a controlled-failure stub.
+
+### Errors surface human text — not stack traces
+
+- **TVM exit codes** (contract reverts) translate to `{origin, name, message, hint?}` via `explainExitCode(n)` (`src/errors/explain.ts`). The CLI top-level catch prints the raw `error: <message>` line AND the explanation when it can extract a code from the error (SDK-style `exitCode`, numeric `code`, or `exit code N` substring). `kronos-sdk` owns codes 100-119, `forgeton-sdk` owns 160-182, both know TVM 1-100 — the helper tries both SDKs in order.
+- **Typed errors** (`PoolRejectedError`, `LockHeldError`, `InsufficientWalletBalanceError`, `CheckpointStateError`, etc.) are already self-describing via their `.message` — the CLI surface prefers those strings over the explanation (exit code is additive context).
+- **Uncaught exceptions / unhandled rejections** inside the daemon log at `error` level (via the redacted pino) and trigger graceful shutdown by aborting the main `AbortController`. systemd's `Restart=on-failure` picks up the exit code and respawns. We never let the process die silently — every crash leaves a logline naming it.
+
+### Backoff / retry is a shared primitive
+
+`src/errors/backoff.ts` exposes `jitteredBackoff` (equal-jitter exponential — same formula `FailoverTonClient` uses) and `abortableRetry(fn, { maxAttempts, baseBackoffMs, maxBackoffMs, signal, shouldRetry, onRetry, sleep, random })`. Not yet consumed by a hot path (FailoverTonClient has its own inline retry; stake commands fail loud by design), but future background ops (deferred webhook POSTs, stuck-tx recovery, third-party alerters) get one reusable pattern instead of hand-rolled while-loops.
 
 ### Metrics + logs + health: one source of truth each
 
@@ -368,11 +386,12 @@ Production uses `DEFAULT_KDF_N = 131072` (matches ethers.js v6 wallet default, ~
 - **D.8 (Kronos worker)** — done. Pure `decide()` + `AutomatonMirror` cache + `runWorkerCycle(deps)` single-iteration loop with single-flight guard and injectable `submitExecute`. 26 additional tests (all 6 decide statuses × execute/skip paths + mirror refresh/replace + loop orchestration).
 - **D.9 (event subscriber)** — done. `drainEvents(deps)` tails registry + pool tx history, decodes external-out bodies via both SDKs, dispatches to pluggable handlers; `~/.titon/automaton/state.json` checkpoint survives restarts. Built-ins: mirror refresh on `AutomatonMirrorUpdated`, self-slash alerter (log + webhook + hook), consumer watcher. 28 additional tests.
 - **D.10 (daemon)** — done. `runDaemon` composes lockfile + unlock + runtime + schema-check + handlers + timer loop + graceful shutdown. `abortableSleep` / `loopCycles` / `waitForDrain` primitives are cancellable and tested. SIGHUP reload deferred with a loud warn. 14 additional tests.
-- **D.11 (logs + metrics + health)** — done. Pino logger with structural redaction, prom-client `DaemonMetrics` bundle (counters + gauges + cycle histogram), `startHealthServer` exposes `/metrics`/`/healthz`/`/readyz` on `127.0.0.1:metricsPort`. Gauges snapshot every cycle (balance / stake / active / drift) via best-effort `tryAsync`. Double-SIGINT force-exits at 130; LockHeldError returns EXIT_LOCK_HELD=75. 23 additional tests.
-- **Up next (D.12)** — Error handling + backoff: unified retry/backoff helpers; explainError → human-readable alerts; uncaught-exception handler.
-- **D.13–D.15** — see `../kronos/progress.md`.
+- **D.11 (logs + metrics + health)** — done. Pino logger with structural redaction, prom-client `DaemonMetrics` bundle (counters + gauges + cycle histogram), `startHealthServer` exposes `/metrics`/`/healthz`/`/readyz` on `config.metricsHost:metricsPort`. Gauges snapshot every Nth cycle (configurable via `gaugeSnapshotEveryNTicks`). Shared `collectChainSnapshot` used by status + daemon. 28 additional tests.
+- **D.12 (error handling + backoff)** — done. `abortableRetry` + `jitteredBackoff` primitives; `explainExitCode` unifies kronos/forgeton/tvm SDK error tables; CLI top-level catch surfaces explanation under the raw error. Daemon installs `uncaughtException` + `unhandledRejection` handlers that log + trigger graceful shutdown. 24 additional tests.
+- **Up next (D.13)** — Distribution: npm publish, Docker multi-stage + multi-arch, systemd unit, release script.
+- **D.14–D.15** — see `../kronos/progress.md`.
 
-Total: **262 tests** across 19 suites. Full build + test runs in ~10 s.
+Total: **291 tests** across 22 suites. Full build + test runs in ~9 s.
 
 ## Security hardening — summary
 

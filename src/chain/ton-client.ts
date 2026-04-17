@@ -41,6 +41,7 @@ import {
 import { TonClient } from '@ton/ton';
 
 import type { Network } from '../config/schema';
+import { jitteredBackoff } from '../errors/backoff';
 
 export interface EndpointSpec {
     url: string;
@@ -188,7 +189,11 @@ export class FailoverTonClient {
                 const fromEndpoint = this.endpointUrls[this.cursor]!;
                 this.cursor = (this.cursor + 1) % this.clients.length;
                 const nextEndpoint = this.endpointUrls[this.cursor]!;
-                const sleepMs = jitteredBackoff(attempt, this.baseBackoffMs, this.maxBackoffMs);
+                const sleepMs = jitteredBackoff({
+                    attempt,
+                    baseMs: this.baseBackoffMs,
+                    maxMs: this.maxBackoffMs,
+                });
                 this.onRetry({ attempt, error: err, fromEndpoint, nextEndpoint, sleepMs });
                 if (sleepMs > 0) {
                     await this.sleep(sleepMs);
@@ -241,11 +246,4 @@ export class FailoverTonClient {
 
 function defaultSleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function jitteredBackoff(attempt: number, base: number, cap: number): number {
-    if (base <= 0) return 0;
-    const exp = Math.min(cap, base * 2 ** (attempt - 1));
-    const half = exp / 2;
-    return Math.floor(half + Math.random() * half);
 }

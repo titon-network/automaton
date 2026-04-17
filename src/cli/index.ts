@@ -11,6 +11,7 @@ import { registerInitCommand } from './commands/init';
 import { registerRunCommand } from './commands/run';
 import { registerStakeCommand } from './commands/stake';
 import { registerStatusCommand } from './commands/status';
+import { explainExitCode, extractExitCode, formatExplanation } from '../errors';
 import { pkgVersion } from './version';
 
 function buildProgram(): Command {
@@ -40,5 +41,14 @@ async function main(): Promise<void> {
 main().catch((err: unknown) => {
     const message = err instanceof Error ? err.message : String(err);
     process.stderr.write(`error: ${message}\n`);
+
+    // If the error surface carries a TVM exit code (contract revert),
+    // surface the SDK's human-readable explanation underneath. Operators
+    // see "exit 160 (forgeton) E_NOT_REGISTERED: …" instead of guessing.
+    const code = extractExitCode(err);
+    if (code !== null) {
+        process.stderr.write(formatExplanation(explainExitCode(code)) + '\n');
+    }
+
     process.exit(1);
 });

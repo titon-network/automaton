@@ -144,7 +144,17 @@ export async function runDaemon(options: RunDaemonOptions = {}): Promise<number>
     let exitCode = 0;
     const ac = new AbortController();
     const installedSignals: Array<[NodeJS.Signals, NodeJS.SignalsListener]> = [];
+    const installedProcessHandlers: Array<[string, (arg: unknown) => void]> = [];
     let healthServer: HealthServer | undefined;
+
+    // Uncaught exceptions + unhandled rejections must not crash a long-
+    // running daemon silently. We log them via the pino logger (so the
+    // redaction discipline applies) and signal the loop to exit
+    // cleanly. systemd's Restart=on-failure picks up the exit code 1
+    // and respawns.
+    if (options.externalAbort === undefined) {
+        installProcessErrorHandlers(ac, logger, installedProcessHandlers);
+    }
 
     try {
         const password = await getPassword({ prompt: 'Keystore password: ' });
@@ -262,6 +272,9 @@ export async function runDaemon(options: RunDaemonOptions = {}): Promise<number>
         exitCode = 1;
     } finally {
         for (const [sig, h] of installedSignals) process.off(sig, h);
+        for (const [event, h] of installedProcessHandlers) {
+            process.off(event as 'uncaughtException' | 'unhandledRejection', h);
+        }
         if (healthServer !== undefined) {
             try {
                 await healthServer.close();
@@ -465,6 +478,35 @@ function buildHandlers(
         }),
         consumerWatchHandler(logger),
     ];
+}
+
+function installProcessErrorHandlers(
+    ac: AbortController,
+    logger: WorkerLogger,
+    track: Array<[string, (arg: unknown) => void]>,
+): void {
+    const onUncaught = (err: unknown): void => {
+        const message = err instanceof Error ? err.message : String(err);
+        const stack = err instanceof Error ? err.stack : undefined;
+        logger.error('uncaughtException — initiating graceful shutdown', {
+            error: message,
+            stack,
+        });
+        if (!ac.signal.aborted) ac.abort();
+    };
+    const onRejection = (reason: unknown): void => {
+        const message = reason instanceof Error ? reason.message : String(reason);
+        const stack = reason instanceof Error ? reason.stack : undefined;
+        logger.error('unhandledRejection — initiating graceful shutdown', {
+            error: message,
+            stack,
+        });
+        if (!ac.signal.aborted) ac.abort();
+    };
+    process.on('uncaughtException', onUncaught);
+    process.on('unhandledRejection', onRejection);
+    track.push(['uncaughtException', onUncaught as (arg: unknown) => void]);
+    track.push(['unhandledRejection', onRejection as (arg: unknown) => void]);
 }
 
 function installSignalHandlers(

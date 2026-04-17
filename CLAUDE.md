@@ -14,6 +14,9 @@
 | Add a `doctor` check | `src/cli/commands/doctor.ts` | Install-scoped? push into `buildInstallChecks`. Config-scoped? `buildConfigChecks`. On-chain? `buildChainChecks`. Each `Check.run()` returns `{ status, detail }` where status is `ok` / `warn` / `fail` / `skip`; failures gate exit, warnings don't. |
 | Surface on-chain field in `status` | `src/cli/commands/status.ts` | Add a field to `ChainSnapshot`, read it in `collectChainSnapshot` via a `tryAsync` wrapper (never crashes the status output), and print in `renderStatus` |
 | Add a new deployment (e.g. mainnet) | `src/chain/deployment.ts` | Add the `case` and pull addresses from whatever SDK constant lands; `deployment.spec.ts` has the matching case |
+| Send a tx from the automaton wallet | `src/chain/submit.ts` | `senderFor(client, wallet)` builds the Sender; `sendAndConfirm(...)` wraps the send with seqno-advance polling + explorer URL; `waitForSeqnoAdvance` is the reusable core |
+| Size a pool message | `src/chain/stake-cost.ts` | `registerValue` / `increaseStakeValue` / `requestUnstakeValue` / `finalizeUnstakeValue` / `cancelUnstakeValue` match the on-chain floors |
+| Add a stake subcommand | `src/cli/commands/stake.ts` | Thread it through the shared `loadContext` → pre-state validation → `submit()` helper so the progress output + error handling stays uniform |
 | Change keystore format | `src/wallet/keystore.ts` | Bump `KEYSTORE_VERSION`; store migration path in the same file |
 | Change wallet derivation | `src/wallet/wallet.ts` | V5R1 is network-aware — mainnet/testnet produce different addresses from the same mnemonic; keystore must continue to carry the network |
 | Persist a new file atomically | `src/util/atomic-write.ts` | `atomicWriteFile(path, data, mode)` — used by both config and keystore; use it for any other persistent file |
@@ -114,6 +117,7 @@ src/
       doctor.ts              # environment + config + keystore checks
       init.ts                # interactive + flag-driven first-run setup (network, new/import wallet, password, write config+keystore)
       status.ts              # read-only operator snapshot (balance + automaton info + drift counters + lockfile)
+      stake.ts               # register / increase / request-unstake / cancel-unstake / withdraw — each unlocks the wallet, pre-checks state, submits + waits for seqno advance
       status.ts              # stub until D.6
       stake.ts               # stub until D.7 (register / increase / unstake / cancel / withdraw)
       run.ts                 # stub until D.10 (daemon)
@@ -134,6 +138,8 @@ src/
     schema-check.ts          # compare on-chain storageVersion getters vs REGISTRY_STORAGE_VERSION + FORGETON_STORAGE_VERSION; refuse on mismatch
     deployment.ts            # resolve (registry, pool) addresses per network — testnet via kronos-sdk's KRONOS_TESTNET; mainnet throws until it ships
     runtime.ts               # buildChainRuntime(config) → { client, deployment, registry, pool } — the canonical "start talking to chain" entry point
+    submit.ts                # senderFor() + sendAndConfirm() (seqno-advance polling) + explorer URL helpers; waitForSeqnoAdvance is the testable core
+    stake-cost.ts            # pool message-value calculators — mirror of the on-chain floors in handleRegisterAutomaton / handleIncreaseStake / handleUnstake
     index.ts                 # barrel
   util/
     atomic-write.ts          # tmp + chmod + rename (used by config + keystore)
@@ -148,6 +154,8 @@ tests/
   init.spec.ts               # non-interactive end-to-end, idempotence, flag validation, mnemonic + password file parsing
   deployment.spec.ts         # testnet resolves to KRONOS_TESTNET; mainnet throws DeploymentNotAvailableError
   status.spec.ts             # renderStatus pure-rendering cases + runStatus "no install" rejection + mainnet no-chain path
+  stake-cost.spec.ts         # pure math for all five value calculators + willCrossInactive edge cases
+  submit.spec.ts             # waitForSeqnoAdvance poll/advance/timeout + explorer URL builders
 package.json                 # bin: automaton; file: deps on ../kronos/sdk and ../forgeton/sdk
 tsconfig.json                # strict + isolatedModules + NodeNext + ES2022, outDir dist/
 jest.config.ts               # --runInBand, 1 GB heap, 30s timeout, globalSetup=preflight
@@ -206,6 +214,14 @@ Output is colour-coded on a TTY (green/yellow/red/dim) and plain text otherwise 
 
 The pool's `getAutomaton(walletAddr)` returns `null` for "not registered" and the full struct otherwise — we branch on that to show either "not registered — run `automaton stake register`" or the active/inactive + stake + slashCount triple.
 
+### Stake subcommands pre-check on-chain state before sending
+
+Every `automaton stake *` subcommand loads the pool config + consumer count + this automaton's current record, then refuses early if the pre-state is wrong — "already registered" / "not registered" / "unstake already pending" / "cooldown not elapsed". The pool enforces the same invariants on-chain, but eating a 500 ms RPC round-trip to find out is worse UX than a one-line error before the wallet even unlocks.
+
+Message values are computed from the pool's published config, not constants: `registerValue` = `stake + minGasForRegister + consumerCount × syncGasCost`, mirroring the floor in `handleRegisterAutomaton`. If the pool owner bumps `syncGasCost` or admits a new consumer, automaton tx sizing follows automatically on the next invocation. The calculators live in `src/chain/stake-cost.ts` with a comment pointing to the source-of-truth Tolk handler.
+
+Wallet balance is checked with a `WALLET_GAS_BUFFER = 0.1 TON` headroom above the attached value, so operator-visible errors mention the exact shortfall instead of surfacing as a cryptic seqno timeout after the wallet tried and failed to sign.
+
 ### Failover is a property of the client, not the caller
 
 `FailoverTonClient` wraps `@ton/ton`'s `TonClient`. It takes an array of endpoints, keeps one `TonClient` per endpoint, and exposes two surfaces:
@@ -261,10 +277,11 @@ Production uses `DEFAULT_KDF_N = 131072` (matches ethers.js v6 wallet default, ~
 - **D.4 (TON client layer)** — done. `FailoverTonClient` with retry/rotate on transient errors; `lockfile.ts` PID-based single-instance lock; `schema-check.ts` on-chain version reconciliation. 47 additional tests.
 - **D.5 (init command)** — done. Interactive + flag-driven first-run setup: network + new/import wallet + password + keystore + config, all idempotent. 17 additional tests (plus a non-TTY CLI smoke test).
 - **D.6 (status + doctor expansion)** — done. Chain runtime builder + deployment resolver; doctor gains RPC-reachable / balance / schema-match / consumer-admitted / lockfile checks (colour-coded, skip-aware); `automaton status` renders a full operator snapshot with best-effort chain reads. 13 additional tests.
-- **Up next (D.7)** — stake lifecycle: `automaton stake register / increase / request-unstake / cancel / withdraw` against the pool.
-- **D.8–D.15** — see `../kronos/progress.md`.
+- **D.7 (stake lifecycle)** — done. Five subcommands (register / increase / request-unstake / cancel-unstake / withdraw) sharing one `submit()` helper: unlock wallet, pre-check on-chain state, size the pool message, send + wait for seqno advance, print tx hash + explorer URL. 22 additional tests (stake-cost math + waitForSeqnoAdvance with injected sleep/now).
+- **Up next (D.8)** — Kronos worker: poll loop, mirror snapshot, assignment decision, execute submission.
+- **D.9–D.15** — see `../kronos/progress.md`.
 
-Total: **137 tests** across 9 suites. Full build + test runs in ~7 s.
+Total: **164 tests** across 11 suites. Full build + test runs in ~8 s.
 
 ## Security hardening — summary
 

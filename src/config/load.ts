@@ -2,19 +2,12 @@
 //
 // Design decisions:
 //
-//   1. Atomic writes. saveConfig writes to a .tmp sibling then renames. A
-//      crash mid-write leaves the old config intact instead of a half-written
-//      file the next load would reject.
-//
-//   2. 0600 perms. Not strictly sensitive (wallet lives elsewhere), but
-//      "private to owner" is a good default for an operator-only file.
-//
-//   3. Typed errors. ConfigNotFoundError vs ConfigValidationError vs
-//      environment-overlay errors are distinct classes so the CLI can print
+//   1. Typed errors. ConfigNotFoundError vs ConfigValidationError vs
+//      ConfigEnvOverlayError are distinct classes so the CLI can print
 //      different guidance for each ("run init" vs "fix the file" vs "fix the
 //      shell export").
 //
-//   4. Env overlay is applied AFTER schema validation. So the file's invariant
+//   2. Env overlay is applied AFTER schema validation. So the file's invariant
 //      must hold on disk; env vars just tweak runtime. (An env var that
 //      violates the schema throws — same class of loud failure as a bad file.)
 

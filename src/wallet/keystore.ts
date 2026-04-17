@@ -170,8 +170,7 @@ export async function unlockKeystore(blob: Keystore, password: string): Promise<
     // The derived address should match what was stored at lock time. The
     // network field is plaintext (not under the AES-GCM tag), so flipping
     // testnet↔mainnet in the file would otherwise silently produce a wallet
-    // for the wrong network. This check catches that — and a contract-level
-    // derivation change in a future @ton/ton version, if that ever happens.
+    // for the wrong network. This check catches that.
     const derivedAddress = wallet.address.toString({
         bounceable: false,
         testOnly: blob.network === 'testnet',

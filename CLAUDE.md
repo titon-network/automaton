@@ -11,7 +11,9 @@
 | Add a new config field | `src/config/schema.ts` | If runtime-tunable, add env override in `src/config/load.ts` (`applyEnvOverlay`); default goes in `defaultConfig()`; bump `CONFIG_VERSION` if semantics change |
 | Add an env var override | `src/config/load.ts` | Narrow allow-list — `applyEnvOverlay` re-uses schema validators so types stay honest |
 | Change where a file lives | `src/config/paths.ts` | Every filesystem path lives here as a pure function (re-reads env per call) |
-| Add a `doctor` check | `src/cli/commands/doctor.ts` | Push to the `checks` array; each entry is `{ name, run() }`; `run` may be sync or async |
+| Add a `doctor` check | `src/cli/commands/doctor.ts` | Install-scoped? push into `buildInstallChecks`. Config-scoped? `buildConfigChecks`. On-chain? `buildChainChecks`. Each `Check.run()` returns `{ status, detail }` where status is `ok` / `warn` / `fail` / `skip`; failures gate exit, warnings don't. |
+| Surface on-chain field in `status` | `src/cli/commands/status.ts` | Add a field to `ChainSnapshot`, read it in `collectChainSnapshot` via a `tryAsync` wrapper (never crashes the status output), and print in `renderStatus` |
+| Add a new deployment (e.g. mainnet) | `src/chain/deployment.ts` | Add the `case` and pull addresses from whatever SDK constant lands; `deployment.spec.ts` has the matching case |
 | Change keystore format | `src/wallet/keystore.ts` | Bump `KEYSTORE_VERSION`; store migration path in the same file |
 | Change wallet derivation | `src/wallet/wallet.ts` | V5R1 is network-aware — mainnet/testnet produce different addresses from the same mnemonic; keystore must continue to carry the network |
 | Persist a new file atomically | `src/util/atomic-write.ts` | `atomicWriteFile(path, data, mode)` — used by both config and keystore; use it for any other persistent file |
@@ -111,6 +113,7 @@ src/
     commands/
       doctor.ts              # environment + config + keystore checks
       init.ts                # interactive + flag-driven first-run setup (network, new/import wallet, password, write config+keystore)
+      status.ts              # read-only operator snapshot (balance + automaton info + drift counters + lockfile)
       status.ts              # stub until D.6
       stake.ts               # stub until D.7 (register / increase / unstake / cancel / withdraw)
       run.ts                 # stub until D.10 (daemon)
@@ -129,6 +132,8 @@ src/
     ton-client.ts            # FailoverTonClient — endpoint rotation + jittered backoff on transient errors; .call(fn) + .open(contract)
     lockfile.ts              # PID-based single-instance lock; live/stale detection via process.kill(pid, 0)
     schema-check.ts          # compare on-chain storageVersion getters vs REGISTRY_STORAGE_VERSION + FORGETON_STORAGE_VERSION; refuse on mismatch
+    deployment.ts            # resolve (registry, pool) addresses per network — testnet via kronos-sdk's KRONOS_TESTNET; mainnet throws until it ships
+    runtime.ts               # buildChainRuntime(config) → { client, deployment, registry, pool } — the canonical "start talking to chain" entry point
     index.ts                 # barrel
   util/
     atomic-write.ts          # tmp + chmod + rename (used by config + keystore)
@@ -141,6 +146,8 @@ tests/
   lockfile.spec.ts           # acquire/release/inspect; live pid / stale pid / corrupt / missing
   schema-check.spec.ts       # ok case; either-side mismatch; error message content; propagates fetcher errors
   init.spec.ts               # non-interactive end-to-end, idempotence, flag validation, mnemonic + password file parsing
+  deployment.spec.ts         # testnet resolves to KRONOS_TESTNET; mainnet throws DeploymentNotAvailableError
+  status.spec.ts             # renderStatus pure-rendering cases + runStatus "no install" rejection + mainnet no-chain path
 package.json                 # bin: automaton; file: deps on ../kronos/sdk and ../forgeton/sdk
 tsconfig.json                # strict + isolatedModules + NodeNext + ES2022, outDir dist/
 jest.config.ts               # --runInBand, 1 GB heap, 30s timeout, globalSetup=preflight
@@ -180,9 +187,24 @@ Defense-in-depth on unlock:
 
 `getPassword` reads `AUTOMATON_PASSWORD` when set, otherwise raw-mode TTY. The env path is for Docker secrets / systemd credentials. We deliberately do NOT accept `--password` as a CLI flag because it would land in shell history.
 
-### Doctor is install-scoped, not runtime-scoped
+### Doctor exits on fails, ignores warns, skips gracefully
 
-`automaton doctor` checks Node version, SDK resolvability, config presence/validity, keystore presence/validity. It does NOT try to reach the chain or unlock the wallet — those are runtime concerns that belong in `status` or `run`. A failing doctor means "your install is broken"; a failing status means "your install works but the state doesn't line up with the chain."
+`automaton doctor` builds its check list at runtime based on what's available on disk. Layers, in order:
+
+1. **Install-scoped** (always) — node version, SDK resolvability, pkg version.
+2. **Config-scoped** (skipped cleanly when config or keystore is absent) — loads both, cross-checks their `network` fields.
+3. **Chain-scoped** (skipped when deployment isn't known for the network) — RPC reachable, wallet balance vs `config.minFreeBalance`, schema versions match via `checkSchemaVersions`, registry admitted as a consumer on the pool.
+4. **Runtime-scoped** (always) — lockfile: absent / held-by-pid-X / stale.
+
+Each check returns `{ status, detail }` where status is one of `ok` / `warn` / `fail` / `skip`. Only `fail` gates the exit code. `warn` is for "technically works but you probably want to fix this" (e.g. balance below `minFreeBalance`). `skip` is for "prerequisite missing, intentionally not run."
+
+Output is colour-coded on a TTY (green/yellow/red/dim) and plain text otherwise (so logs stay readable).
+
+### Status is best-effort — chain errors never crash it
+
+`automaton status` builds the same `ChainRuntime` as doctor and queries seven pieces of state in parallel: wallet balance, automaton info, active-automaton-count, both drift counters, and both schema versions. Each call is wrapped in a `tryAsync` helper that pushes failure messages onto a per-run `errors: string[]` array. A dead RPC surfaces as "balance: ECONNRESET" in a footer — the operator still sees everything else, which is the whole point of running `status` during an outage.
+
+The pool's `getAutomaton(walletAddr)` returns `null` for "not registered" and the full struct otherwise — we branch on that to show either "not registered — run `automaton stake register`" or the active/inactive + stake + slashCount triple.
 
 ### Failover is a property of the client, not the caller
 
@@ -238,10 +260,11 @@ Production uses `DEFAULT_KDF_N = 131072` (matches ethers.js v6 wallet default, ~
 - **D.3 (wallet keystore)** — done. `8989253`. 23 tests, 6 tamper vectors.
 - **D.4 (TON client layer)** — done. `FailoverTonClient` with retry/rotate on transient errors; `lockfile.ts` PID-based single-instance lock; `schema-check.ts` on-chain version reconciliation. 47 additional tests.
 - **D.5 (init command)** — done. Interactive + flag-driven first-run setup: network + new/import wallet + password + keystore + config, all idempotent. 17 additional tests (plus a non-TTY CLI smoke test).
-- **Up next (D.6)** — `automaton status` + `automaton doctor` expansion (on-chain reachability, wallet balance, schema match, consumer admission).
-- **D.7–D.15** — see `../kronos/progress.md`.
+- **D.6 (status + doctor expansion)** — done. Chain runtime builder + deployment resolver; doctor gains RPC-reachable / balance / schema-match / consumer-admitted / lockfile checks (colour-coded, skip-aware); `automaton status` renders a full operator snapshot with best-effort chain reads. 13 additional tests.
+- **Up next (D.7)** — stake lifecycle: `automaton stake register / increase / request-unstake / cancel / withdraw` against the pool.
+- **D.8–D.15** — see `../kronos/progress.md`.
 
-Total: **120 tests** across 7 suites. Full build + test runs in ~9 s.
+Total: **137 tests** across 9 suites. Full build + test runs in ~7 s.
 
 ## Security hardening — summary
 

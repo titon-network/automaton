@@ -149,6 +149,50 @@ export function acquireLock(options: LockOptions = {}): LockInfo {
     );
 }
 
+/**
+ * Diagnostic view of the lock at `path`. Used by `doctor` and `status`
+ * to surface the lock in a consistent, liveness-aware way — critical
+ * because "held by pid 1234" from a crashed daemon is the exact
+ * failure mode those commands are meant to diagnose.
+ */
+export type LockDescription =
+    | { kind: 'absent'; detail: string }
+    | { kind: 'held-by-us'; info: LockInfo; detail: string }
+    | { kind: 'held-alive'; info: LockInfo; detail: string }
+    | { kind: 'held-stale'; info: LockInfo; detail: string }
+    | { kind: 'corrupt'; message: string; detail: string };
+
+export function describeLock(
+    path: string = lockPath(),
+    isAlive: (pid: number) => boolean = isPidAlive,
+): LockDescription {
+    let info: LockInfo | null;
+    try {
+        info = inspectLock(path);
+    } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { kind: 'corrupt', message, detail: `corrupt: ${message}` };
+    }
+    if (info === null) return { kind: 'absent', detail: 'absent (daemon not running)' };
+    if (info.pid === process.pid) {
+        return { kind: 'held-by-us', info, detail: 'held by this process' };
+    }
+    if (isAlive(info.pid)) {
+        return {
+            kind: 'held-alive',
+            info,
+            detail: `held by pid ${info.pid} since ${info.startedAt}`,
+        };
+    }
+    return {
+        kind: 'held-stale',
+        info,
+        detail:
+            `STALE — pid ${info.pid} is no longer running (crashed daemon?). ` +
+            `Remove manually: rm ${path}`,
+    };
+}
+
 export function releaseLock(path: string = lockPath()): void {
     let info: LockInfo | null;
     try {

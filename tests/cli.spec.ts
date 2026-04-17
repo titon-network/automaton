@@ -9,9 +9,16 @@ const ROOT = join(__dirname, '..');
 const CLI = join(ROOT, 'dist', 'cli', 'index.js');
 const PKG_VERSION = (require(join(ROOT, 'package.json')) as { version: string }).version;
 
-function run(args: string[]): { stdout: string; status: number } {
+function run(
+    args: string[],
+    env: Record<string, string> = {},
+): { stdout: string; status: number } {
     try {
-        const stdout = execFileSync('node', [CLI, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+        const stdout = execFileSync('node', [CLI, ...args], {
+            encoding: 'utf8',
+            stdio: ['ignore', 'pipe', 'pipe'],
+            env: { ...process.env, ...env },
+        });
         return { stdout, status: 0 };
     } catch (err) {
         const e = err as { stdout?: Buffer; stderr?: Buffer; status?: number };
@@ -51,12 +58,19 @@ describe('automaton CLI scaffold', () => {
         expect(stdout).toContain('kronos-sdk resolves');
     });
 
-    it('stub subcommands exit non-zero with a "not implemented" message', () => {
-        for (const cmd of ['status', 'run']) {
-            const { stdout, status } = run([cmd]);
-            expect(status).not.toBe(0);
-            expect(stdout).toContain('not implemented yet');
-        }
+    it('run stub exits non-zero with a "not implemented" message', () => {
+        const { stdout, status } = run(['run']);
+        expect(status).not.toBe(0);
+        expect(stdout).toContain('not implemented yet');
+    });
+
+    it('status without install exits non-zero with a pointer to init', () => {
+        // No TITON_HOME override + no stub state → runStatus fails with
+        // "no config" (caller hasn't run init). Verifies the error is
+        // actionable, not a stack trace.
+        const { stdout, status } = run(['status'], { TITON_HOME: '/tmp/titon-fresh-for-cli-spec' });
+        expect(status).not.toBe(0);
+        expect(stdout).toMatch(/no config|automaton init/);
     });
 
     it('init without flags exits non-zero (interactive mode, no TTY in test)', () => {

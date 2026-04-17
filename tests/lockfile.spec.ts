@@ -6,6 +6,7 @@ import {
     LockHeldError,
     LOCK_VERSION,
     acquireLock,
+    describeLock,
     inspectLock,
     isPidAlive,
     releaseLock,
@@ -167,6 +168,49 @@ describe('lockfile', () => {
         it('throws LockCorruptError on corrupt content', () => {
             writeFileSync(path, '{ pid: 1 }');
             expect(() => inspectLock(path)).toThrow(LockCorruptError);
+        });
+    });
+
+    describe('describeLock', () => {
+        it('returns absent when the lock file does not exist', () => {
+            const desc = describeLock(path);
+            expect(desc.kind).toBe('absent');
+            expect(desc.detail).toMatch(/absent/);
+        });
+
+        it('returns held-by-us when our own pid owns the lock', () => {
+            acquireLock({ path });
+            const desc = describeLock(path);
+            expect(desc.kind).toBe('held-by-us');
+            expect(desc.detail).toMatch(/this process/);
+        });
+
+        it('returns held-alive for a live foreign pid', () => {
+            writeFileSync(
+                path,
+                JSON.stringify({ version: LOCK_VERSION, pid: 12345, startedAt: '2026-04-17T00:00:00.000Z' }),
+            );
+            const desc = describeLock(path, () => true);
+            expect(desc.kind).toBe('held-alive');
+            expect(desc.detail).toContain('12345');
+        });
+
+        it('returns held-stale when the recorded pid is dead', () => {
+            writeFileSync(
+                path,
+                JSON.stringify({ version: LOCK_VERSION, pid: 12345, startedAt: '2026-04-17T00:00:00.000Z' }),
+            );
+            const desc = describeLock(path, () => false);
+            expect(desc.kind).toBe('held-stale');
+            expect(desc.detail).toMatch(/STALE/);
+            expect(desc.detail).toContain('rm ' + path);
+        });
+
+        it('returns corrupt on malformed content', () => {
+            writeFileSync(path, 'not json');
+            const desc = describeLock(path);
+            expect(desc.kind).toBe('corrupt');
+            expect(desc.detail).toMatch(/corrupt/);
         });
     });
 

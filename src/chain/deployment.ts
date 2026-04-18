@@ -36,7 +36,7 @@ export class DeploymentNotAvailableError extends Error {
 export function resolveDeployment(config: Config): Deployment {
     switch (config.network) {
         case 'testnet':
-            return { registry: KRONOS_TESTNET.registry, pool: KRONOS_TESTNET.pool };
+            return { registry: KRONOS_TESTNET.registry, pool: KRONOS_TESTNET.forgeton };
         case 'mainnet':
             throw new DeploymentNotAvailableError(
                 'Kronos mainnet deployment is not yet live. Testnet addresses are in ' +

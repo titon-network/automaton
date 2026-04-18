@@ -32,7 +32,7 @@ import {
     resolveAssignedAutomaton,
     type JobWindowState,
 } from 'kronos-sdk';
-import { executionCost } from 'kronos-sdk';
+import { executionEconomics } from 'kronos-sdk';
 
 export type DecisionAction = 'execute' | 'skip';
 
@@ -113,11 +113,11 @@ export function decide(input: DecideInput): Decision {
     // Putting this AFTER the explicit status checks gives more useful error
     // messages ("too-late" is more actionable than "underfunded" when both
     // are true and the latter is a consequence of the former).
-    const perExecutionCost: bigint = executionCost({
+    const perExecutionCost: bigint = executionEconomics({
         reward: job.reward,
         gasLimit: job.gasLimit,
         protocolFeeBps: registryConfig.protocolFeeBps,
-    });
+    }).totalCost;
     const executable = isExecutable({
         lastExecutedAt: job.lastExecutedAt,
         interval: job.interval,

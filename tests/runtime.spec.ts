@@ -20,7 +20,7 @@ describe('buildChainRuntime', () => {
         expect(runtime.client).toBeInstanceOf(FailoverTonClient);
         expect(runtime.client.currentEndpoint).toContain('testnet.toncenter.com');
         expect(runtime.deployment.registry.equals(KRONOS_TESTNET.registry)).toBe(true);
-        expect(runtime.deployment.pool.equals(KRONOS_TESTNET.pool)).toBe(true);
+        expect(runtime.deployment.pool.equals(KRONOS_TESTNET.forgeton)).toBe(true);
         // OpenedContract<T> surface — the sdk wrappers expose registry/pool
         // methods. Spot-check the presence of a getter.
         expect(typeof runtime.registry.getConfig).toBe('function');

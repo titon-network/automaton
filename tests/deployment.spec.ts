@@ -10,7 +10,7 @@ describe('resolveDeployment', () => {
     it('returns the SDK testnet addresses for network=testnet', () => {
         const deployment = resolveDeployment(defaultConfig('testnet'));
         expect(deployment.registry.equals(KRONOS_TESTNET.registry)).toBe(true);
-        expect(deployment.pool.equals(KRONOS_TESTNET.pool)).toBe(true);
+        expect(deployment.pool.equals(KRONOS_TESTNET.forgeton)).toBe(true);
     });
 
     it('throws DeploymentNotAvailableError for network=mainnet (not yet live)', () => {

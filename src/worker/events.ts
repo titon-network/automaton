@@ -24,7 +24,7 @@
 // checkpoint's tx is explicitly skipped (the handler saw it last time).
 
 import type { Address, Cell, Transaction } from '@ton/core';
-import { decodeEvents as decodeKronosEvents, type KronosEvent } from 'kronos-sdk';
+import { decodeEvent as decodeKronosEvent, type KronosEvent } from 'kronos-sdk';
 import { decodeEvents as decodeForgetonEvents, type ForgetonEvent } from 'forgeton-sdk';
 import type { ChainRuntime } from '../chain';
 import { CheckpointStateError } from './checkpoint';
@@ -125,9 +125,15 @@ export async function drainEvents(deps: DrainEventsDeps): Promise<DrainEventsRes
             const bodies = extractExternalOutBodies(tx);
             if (bodies.length === 0) continue;
 
+            // kronos-sdk exports only the singular `decodeEvent` (returns
+            // null on unknown opcode). forgeton-sdk still has the plural
+            // convenience. Map + filter brings the shapes back together
+            // without silently swallowing decoder changes from either SDK.
             const events =
                 source === 'registry'
-                    ? decodeKronosEvents(bodies)
+                    ? bodies
+                          .map((b) => decodeKronosEvent(b))
+                          .filter((e): e is KronosEvent => e !== null)
                     : decodeForgetonEvents(bodies);
             for (const event of events) {
                 // Per-handler isolation: a buggy user handler shouldn't

@@ -13,7 +13,9 @@ import {
 } from 'forgeton-sdk';
 import {
     OP as KRONOS_OP,
-    tryDecodeEvent as tryDecodeKronos,
+    // kronos-sdk only exports the null-returning `decodeEvent`; alias to
+    // preserve the test's existing `tryDecode…` naming.
+    decodeEvent as tryDecodeKronos,
 } from 'kronos-sdk';
 import {
     bigintHashToBase64,

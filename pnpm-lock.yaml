@@ -25,7 +25,7 @@ importers:
         version: file:../forgeton/sdk(@ton/core@0.63.1(@ton/crypto@3.3.0))
       kronos-sdk:
         specifier: file:../kronos/sdk
-        version: file:../kronos/sdk(@ton/core@0.63.1(@ton/crypto@3.3.0))
+        version: file:../kronos/sdk(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/sandbox@0.41.0(@ton-community/func-js@0.11.0)(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/crypto@3.3.0)(@ton/test-utils@0.12.0(@jest/globals@30.3.0)(@ton/core@0.63.1(@ton/crypto@3.3.0)))(jest@30.3.0(@types/node@22.19.17)(ts-node@10.9.2(@types/node@22.19.17)(typescript@5.9.3))))(forgeton-sdk@file:../forgeton/sdk(@ton/core@0.63.1(@ton/crypto@3.3.0)))
       pino:
         specifier: ^9.5.0
         version: 9.14.0
@@ -1279,8 +1279,16 @@ packages:
   kronos-sdk@file:../kronos/sdk:
     resolution: {directory: ../kronos/sdk, type: directory}
     engines: {node: '>=18'}
+    hasBin: true
     peerDependencies:
       '@ton/core': ^0.63.0
+      '@ton/sandbox': ^0.41.0
+      forgeton-sdk: ^0.1.0
+    peerDependenciesMeta:
+      '@ton/sandbox':
+        optional: true
+      forgeton-sdk:
+        optional: true
 
   leven@3.1.0:
     resolution: {integrity: sha512-qsda+H8jTaUaN/x5vzW2rzc+8Rw4TAQ/4KjB46IwK5VH+IlVeeeje/EoZRpiXvIqjFgK84QffqPztGI3VBLG1A==}
@@ -3263,9 +3271,12 @@ snapshots:
 
   jssha@3.2.0: {}
 
-  kronos-sdk@file:../kronos/sdk(@ton/core@0.63.1(@ton/crypto@3.3.0)):
+  kronos-sdk@file:../kronos/sdk(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/sandbox@0.41.0(@ton-community/func-js@0.11.0)(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/crypto@3.3.0)(@ton/test-utils@0.12.0(@jest/globals@30.3.0)(@ton/core@0.63.1(@ton/crypto@3.3.0)))(jest@30.3.0(@types/node@22.19.17)(ts-node@10.9.2(@types/node@22.19.17)(typescript@5.9.3))))(forgeton-sdk@file:../forgeton/sdk(@ton/core@0.63.1(@ton/crypto@3.3.0))):
     dependencies:
       '@ton/core': 0.63.1(@ton/crypto@3.3.0)
+    optionalDependencies:
+      '@ton/sandbox': 0.41.0(@ton-community/func-js@0.11.0)(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/crypto@3.3.0)(@ton/test-utils@0.12.0(@jest/globals@30.3.0)(@ton/core@0.63.1(@ton/crypto@3.3.0)))(jest@30.3.0(@types/node@22.19.17)(ts-node@10.9.2(@types/node@22.19.17)(typescript@5.9.3)))
+      forgeton-sdk: file:../forgeton/sdk(@ton/core@0.63.1(@ton/crypto@3.3.0))
 
   leven@3.1.0: {}
 

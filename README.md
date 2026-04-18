@@ -1,5 +1,9 @@
 # @titon/automaton
 
+[![verify](https://github.com/titon-network/automaton/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/titon-network/automaton/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Node.js](https://img.shields.io/badge/node-%E2%89%A522-brightgreen.svg)](https://nodejs.org)
+
 > **AI assistants / LLM-driven development — start here:** read [`AGENTS.md`](AGENTS.md) (compact quick reference) or [`CLAUDE.md`](CLAUDE.md) (full architecture + navigator tables). Task recipes live in [`.claude/commands/`](.claude/commands/). Single-command gate: `pnpm run verify`. Machine-readable CLI: `automaton doctor --format json` · `automaton status --format json`.
 
 The off-chain operator node for the [Titon](https://github.com/titon) protocol suite on TON.

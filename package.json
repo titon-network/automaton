@@ -27,6 +27,7 @@
     ],
     "scripts": {
         "build": "tsc -p tsconfig.json",
+        "typecheck": "tsc -p tsconfig.json --noEmit",
         "clean": "rm -rf dist",
         "test": "jest --runInBand",
         "cli": "node dist/cli/index.js",

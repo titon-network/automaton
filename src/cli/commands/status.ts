@@ -11,6 +11,11 @@
 // error in the affected cell and keep going — status should never crash
 // on a transient network blip when the operator is trying to diagnose
 // exactly that.
+//
+// Two output formats: `--format human` (default; padded table) and
+// `--format json` (machine-readable; stable shape for agents + CI).
+// Both flow through the same collectStatusData() so the JSON stays in
+// lockstep with what humans see.
 
 import { existsSync } from 'fs';
 import { Address, fromNano } from '@ton/core';
@@ -141,7 +146,15 @@ export function renderStatus(details: {
     return out.join('');
 }
 
-export async function runStatus(): Promise<string> {
+export interface StatusData {
+    config: Config;
+    keystore: Keystore;
+    runtime: ChainRuntime | undefined;
+    deploymentUnavailable: string | undefined;
+    snapshot: ChainSnapshot | undefined;
+}
+
+export async function collectStatusData(): Promise<StatusData> {
     if (!existsSync(configPath())) {
         throw new Error(
             `no config at ${configPath()}.\nRun \`automaton init\` first.`,
@@ -176,7 +189,98 @@ export async function runStatus(): Promise<string> {
         });
     }
 
-    return renderStatus({ config, keystore, runtime, deploymentUnavailable, snapshot });
+    return { config, keystore, runtime, deploymentUnavailable, snapshot };
+}
+
+export async function runStatus(): Promise<string> {
+    return renderStatus(await collectStatusData());
+}
+
+/**
+ * Machine-readable counterpart to `renderStatus`. Stable shape for agents
+ * and CI: bigints surface as `{ nano, ton }` pairs (nano is ground truth,
+ * ton is fromNano for convenience). `apiKey` on endpoints is stripped —
+ * `status --format json` is safe to paste into an issue.
+ */
+export function renderStatusJson(details: StatusData): string {
+    const { config, keystore, runtime, deploymentUnavailable, snapshot } = details;
+
+    const walletBalance =
+        snapshot?.balance !== undefined
+            ? { nano: snapshot.balance.toString(), ton: fromNano(snapshot.balance) }
+            : null;
+
+    type AutomatonState = 'active' | 'inactive' | 'not-registered' | 'unavailable';
+    let automatonState: AutomatonState;
+    if (snapshot === undefined || snapshot.automaton === undefined) automatonState = 'unavailable';
+    else if (snapshot.automaton === null) automatonState = 'not-registered';
+    else automatonState = snapshot.automaton.isActive ? 'active' : 'inactive';
+
+    const info = snapshot?.automaton ?? null;
+    const automatonBody =
+        info !== null && info !== undefined
+            ? {
+                  state: automatonState,
+                  stake: { nano: info.stake.toString(), ton: fromNano(info.stake) },
+                  isActive: info.isActive,
+                  slashCount: info.slashCount,
+                  registeredAt: new Date(info.registeredAt * 1000).toISOString(),
+              }
+            : { state: automatonState };
+
+    const lock = describeLock();
+
+    const payload = {
+        version: pkgVersion(),
+        network: config.network,
+        paths: {
+            config: configPath(),
+            keystore: walletPath(),
+        },
+        wallet: {
+            address: keystore.address,
+            publicKey: keystore.publicKey,
+            balance: walletBalance,
+        },
+        automaton: automatonBody,
+        pool:
+            runtime !== undefined
+                ? {
+                      address: runtime.deployment.pool.toString(),
+                      activeCount:
+                          snapshot?.activeAutomatonCount !== undefined
+                              ? snapshot.activeAutomatonCount.toString()
+                              : null,
+                      schemaVersion: snapshot?.poolStorageVersion ?? null,
+                  }
+                : null,
+        registry:
+            runtime !== undefined
+                ? {
+                      address: runtime.deployment.registry.toString(),
+                      schemaVersion: snapshot?.registryStorageVersion ?? null,
+                      syncesReceived: snapshot?.syncesReceived?.toString() ?? null,
+                      slashesRequested: snapshot?.slashesRequested?.toString() ?? null,
+                  }
+                : null,
+        endpoints: {
+            current: runtime?.client.currentEndpoint ?? null,
+            configured: config.endpoints.map((e) => ({ url: e.url })),
+        },
+        daemon: {
+            lockfile: { kind: lock.kind, detail: lock.detail },
+            metricsPort: config.metricsPort,
+            metricsHost: config.metricsHost,
+        },
+        errors: snapshot?.errors ?? [],
+        deploymentUnavailable: deploymentUnavailable ?? null,
+    };
+
+    return JSON.stringify(payload, null, 2) + '\n';
+}
+
+export async function runStatusJson(): Promise<string> {
+    return renderStatusJson(await collectStatusData());
 }
 
 export function registerStatusCommand(program: Command): void {
@@ -185,8 +289,20 @@ export function registerStatusCommand(program: Command): void {
         .description(
             'Print a compact operator snapshot: network, wallet balance, automaton registration, drift counters, endpoint ring, lockfile. Read-only.',
         )
-        .action(async () => {
-            const out = await runStatus();
+        .option(
+            '--format <fmt>',
+            'output format: "human" (default, padded table) or "json" (machine-readable; stable for agents)',
+            'human',
+        )
+        .action(async (opts: { format: string }) => {
+            if (opts.format !== 'human' && opts.format !== 'json') {
+                process.stderr.write(
+                    `error: --format must be "human" or "json" (got "${opts.format}")\n`,
+                );
+                process.exit(2);
+            }
+            const data = await collectStatusData();
+            const out = opts.format === 'json' ? renderStatusJson(data) : renderStatus(data);
             process.stdout.write(out);
         });
 }

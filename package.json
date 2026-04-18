@@ -20,6 +20,7 @@
     "files": [
         "dist",
         "contrib",
+        "scripts/preflight.mjs",
         "README.md",
         "AGENTS.md",
         "LICENSE"
@@ -29,7 +30,11 @@
         "clean": "rm -rf dist",
         "test": "jest --runInBand",
         "cli": "node dist/cli/index.js",
+        "dev": "ts-node --transpile-only src/cli/index.ts",
         "smoke": "node dist/cli/index.js --version && node dist/cli/index.js doctor",
+        "verify": "pnpm run build && pnpm run test && pnpm run smoke",
+        "preflight": "node scripts/preflight.mjs",
+        "postinstall": "node scripts/preflight.mjs --warn-only",
         "prepublishOnly": "pnpm run clean && pnpm run build && chmod +x dist/cli/index.js && node scripts/check-shebang.mjs",
         "sync:sdks": "cd ../forgeton/sdk && pnpm run build && cd ../../kronos/sdk && pnpm run build && cd ../../automaton && pnpm install --force"
     },

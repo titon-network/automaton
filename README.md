@@ -93,8 +93,8 @@ The daemon prints one JSON line per event to stdout and exposes Prometheus metri
 | Command | What it does |
 |---|---|
 | `automaton init` | First-run setup. Creates `~/.titon/automaton/{config.json, wallet.enc}`. Interactive by default; pass `--network`, `--import-mnemonic <file>`, `--password-file <file>` for fully non-interactive CI runs. |
-| `automaton doctor` | Install + runtime preflight — Node version, SDK resolvability, config/keystore presence, RPC reachability, balance vs `minFreeBalance`, schema-version match, lockfile status. Exits non-zero on any failure; skips chain-dependent checks when no deployment is live (mainnet today). |
-| `automaton status` | Read-only operator snapshot — network, wallet balance, automaton registration (stake / slashCount / registered-at), pool active-count, drift counters, endpoint ring, lockfile. Best-effort chain reads; transient errors land in a footer. |
+| `automaton doctor` | Install + runtime preflight — Node version, SDK resolvability, config/keystore presence, RPC reachability, balance vs `minFreeBalance`, schema-version match, lockfile status. Exits non-zero on any failure; skips chain-dependent checks when no deployment is live (mainnet today). `--format json` for agent-parseable output. |
+| `automaton status` | Read-only operator snapshot — network, wallet balance, automaton registration (stake / slashCount / registered-at), pool active-count, drift counters, endpoint ring, lockfile. Best-effort chain reads; transient errors land in a footer. `--format json` emits a stable machine-readable payload (bigints encoded as `{nano, ton}` pairs; endpoint apiKeys stripped). |
 | `automaton stake register <amount>` | First-time registration with `<amount>` TON collateral. Pool minimum is 10 TON; operator-wallet must additionally hold ~0.07 TON for gas + consumer-fan-out. |
 | `automaton stake increase <amount>` | Top up the staked collateral. Refuses if not registered, inactive, or unstake pending. |
 | `automaton stake request-unstake` | Start the cooldown (default 24 h on ForgeTON). Stake stays locked until `withdraw`. |
@@ -173,7 +173,7 @@ Design decisions are documented at the top of each module. [CLAUDE.md](CLAUDE.md
 
 - **Kronos**: testnet live. Production-grade deploy, ~126 contract tests + cross-contract integration coverage.
 - **ForgeTON**: testnet live.
-- **@titon/automaton**: v0.1.0 feature-complete for Kronos. 292 tests. npm publish gated on SDK publication; Docker + from-source path works today.
+- **@titon/automaton**: v0.1.0 feature-complete for Kronos. Full jest suite gated through `pnpm run verify`. npm publish gated on SDK publication; Docker + from-source path works today.
 - **Fortuna**: not yet built. Deferred to a later phase.
 
 See [../kronos/progress.md](../kronos/progress.md) for the full roadmap.

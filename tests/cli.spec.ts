@@ -58,6 +58,31 @@ describe('automaton CLI scaffold', () => {
         expect(stdout).toContain('kronos-sdk resolves');
     });
 
+    it('doctor --format json emits a structured payload', () => {
+        const { stdout, status } = run(['doctor', '--format', 'json']);
+        // No config on the host yet (under a scratch TITON_HOME), but the
+        // install-scoped checks should all pass, so the JSON parses cleanly.
+        const parsed = JSON.parse(stdout) as {
+            version: string;
+            summary: { total: number; ok: number; warn: number; fail: number; skip: number };
+            checks: Array<{ name: string; status: string; detail: string }>;
+        };
+        expect(parsed.version).toBe(PKG_VERSION);
+        expect(parsed.summary.total).toBe(parsed.checks.length);
+        expect(parsed.summary.ok + parsed.summary.warn + parsed.summary.fail + parsed.summary.skip)
+            .toBe(parsed.summary.total);
+        expect(parsed.checks.some((c) => c.name === 'forgeton-sdk resolves')).toBe(true);
+        expect(parsed.checks.some((c) => c.name === 'kronos-sdk resolves')).toBe(true);
+        // Exit code tracks summary.fail (0 means exit 0).
+        expect(status).toBe(parsed.summary.fail === 0 ? 0 : 1);
+    });
+
+    it('doctor --format invalid exits 2 with a clear error', () => {
+        const { stdout, status } = run(['doctor', '--format', 'yaml']);
+        expect(status).toBe(2);
+        expect(stdout).toMatch(/--format must be/);
+    });
+
     it('run without install exits non-zero with a pointer to init', () => {
         // No TITON_HOME override → runDaemon fails at loadConfig with
         // ConfigNotFoundError. Verifies the error is actionable.

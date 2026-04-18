@@ -10,7 +10,12 @@ import { defaultConfig } from '../src/config/schema';
 import type { Keystore } from '../src/wallet';
 import { runInit } from '../src/cli/commands/init';
 import { generateMnemonic } from '../src/wallet/mnemonic';
-import { renderStatus, runStatus, type ChainSnapshot } from '../src/cli/commands/status';
+import {
+    renderStatus,
+    renderStatusJson,
+    runStatus,
+    type ChainSnapshot,
+} from '../src/cli/commands/status';
 import { KEYSTORE_VERSION } from '../src/wallet/keystore';
 import { writeFileSync } from 'fs';
 
@@ -156,6 +161,124 @@ describe('renderStatus (pure rendering)', () => {
         expect(out).toContain('https://ep-a.example/api');
         expect(out).toContain('[1]:');
         expect(out).toContain('https://ep-b.example/api');
+    });
+});
+
+describe('renderStatusJson (machine-readable)', () => {
+    it('emits stable JSON for a registered active automaton with bigint safety', () => {
+        const snapshot: ChainSnapshot = {
+            balance: toNano('3.5'),
+            automaton: {
+                schemaVersion: 1,
+                stake: toNano('10'),
+                isActive: true,
+                slashCount: 2,
+                registeredAt: Math.floor(new Date('2026-04-01T12:00:00.000Z').getTime() / 1000),
+                unstakeRequestedAt: 0,
+            },
+            activeAutomatonCount: 7n,
+            syncesReceived: 42n,
+            slashesRequested: 5n,
+            errors: [],
+        };
+
+        const raw = renderStatusJson({
+            config: defaultConfig('testnet'),
+            keystore: makeKeystore(),
+            runtime: undefined,
+            deploymentUnavailable: undefined,
+            snapshot,
+        });
+
+        const obj = JSON.parse(raw);
+        expect(obj.network).toBe('testnet');
+        expect(obj.wallet.address).toBe(makeKeystore().address);
+        expect(obj.wallet.balance.nano).toBe(toNano('3.5').toString());
+        expect(obj.wallet.balance.ton).toBe('3.5');
+        expect(obj.automaton.state).toBe('active');
+        expect(obj.automaton.isActive).toBe(true);
+        expect(obj.automaton.slashCount).toBe(2);
+        expect(obj.automaton.stake.nano).toBe(toNano('10').toString());
+        expect(obj.automaton.registeredAt).toBe('2026-04-01T12:00:00.000Z');
+        expect(obj.errors).toEqual([]);
+        expect(obj.deploymentUnavailable).toBeNull();
+        expect(obj.daemon.lockfile.kind).toBeDefined();
+    });
+
+    it('reports "not-registered" when the pool returns null', () => {
+        const snapshot: ChainSnapshot = {
+            balance: toNano('5.2'),
+            automaton: null,
+            errors: [],
+        };
+        const raw = renderStatusJson({
+            config: defaultConfig('testnet'),
+            keystore: makeKeystore(),
+            runtime: undefined,
+            deploymentUnavailable: undefined,
+            snapshot,
+        });
+        const obj = JSON.parse(raw);
+        expect(obj.automaton.state).toBe('not-registered');
+        expect(obj.automaton.stake).toBeUndefined();
+    });
+
+    it('reports "unavailable" on a chain-read miss and still emits valid JSON', () => {
+        const raw = renderStatusJson({
+            config: defaultConfig('testnet'),
+            keystore: makeKeystore(),
+            runtime: undefined,
+            deploymentUnavailable: undefined,
+            snapshot: undefined,
+        });
+        const obj = JSON.parse(raw);
+        expect(obj.automaton.state).toBe('unavailable');
+        expect(obj.wallet.balance).toBeNull();
+        expect(obj.errors).toEqual([]);
+    });
+
+    it('does not leak endpoint apiKey values', () => {
+        const cfg = defaultConfig('testnet');
+        cfg.endpoints = [{ url: 'https://ep.example/api', apiKey: 'SUPERSECRET' }];
+        const raw = renderStatusJson({
+            config: cfg,
+            keystore: makeKeystore(),
+            runtime: undefined,
+            deploymentUnavailable: undefined,
+            snapshot: undefined,
+        });
+        expect(raw).not.toContain('SUPERSECRET');
+        const obj = JSON.parse(raw);
+        expect(obj.endpoints.configured[0].url).toBe('https://ep.example/api');
+        expect(obj.endpoints.configured[0].apiKey).toBeUndefined();
+    });
+
+    it('surfaces deploymentUnavailable as a top-level field on mainnet', () => {
+        const raw = renderStatusJson({
+            config: defaultConfig('mainnet'),
+            keystore: makeKeystore({ network: 'mainnet' }),
+            runtime: undefined,
+            deploymentUnavailable: 'Kronos mainnet deployment is not yet live.',
+            snapshot: undefined,
+        });
+        const obj = JSON.parse(raw);
+        expect(obj.deploymentUnavailable).toContain('mainnet deployment is not yet live');
+        expect(obj.network).toBe('mainnet');
+    });
+
+    it('preserves snapshot errors in a top-level array', () => {
+        const snapshot: ChainSnapshot = {
+            errors: ['balance: ECONNRESET', 'automaton: got 503'],
+        };
+        const raw = renderStatusJson({
+            config: defaultConfig('testnet'),
+            keystore: makeKeystore(),
+            runtime: undefined,
+            deploymentUnavailable: undefined,
+            snapshot,
+        });
+        const obj = JSON.parse(raw);
+        expect(obj.errors).toEqual(['balance: ECONNRESET', 'automaton: got 503']);
     });
 });
 

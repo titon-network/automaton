@@ -29,7 +29,9 @@ import { EXIT_LOCK_HELD } from '../src/daemon/orchestrator';
 
 const ROOT = join(__dirname, '..');
 
-// Collect every .md file under the repo root (excluding deps + build output).
+// Collect every .md file under the repo root (excluding deps + build output
+// + source-tree / scripts / contrib — markdown there is dev-facing navigation,
+// not operator-facing docs, and the operator-surface drift-guard doesn't apply).
 function walkMarkdown(dir: string, out: string[] = []): string[] {
     for (const entry of readdirSync(dir)) {
         if (entry.startsWith('.')) continue;
@@ -40,7 +42,10 @@ function walkMarkdown(dir: string, out: string[] = []): string[] {
                 entry === 'node_modules' ||
                 entry === 'dist' ||
                 entry === 'build' ||
-                entry === 'artifacts'
+                entry === 'artifacts' ||
+                entry === 'src' ||
+                entry === 'scripts' ||
+                entry === 'contrib'
             ) {
                 continue;
             }

@@ -358,33 +358,82 @@ async function buildChecks(): Promise<Check[]> {
     return checks;
 }
 
+interface NamedResult extends CheckResult {
+    name: string;
+}
+
+interface DoctorSummary {
+    total: number;
+    ok: number;
+    warn: number;
+    fail: number;
+    skip: number;
+}
+
+async function runChecks(): Promise<NamedResult[]> {
+    const checks = await buildChecks();
+    const out: NamedResult[] = [];
+    for (const check of checks) {
+        let result: CheckResult;
+        try {
+            result = await check.run();
+        } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            result = { status: 'fail', detail: message };
+        }
+        out.push({ name: check.name, status: result.status, detail: result.detail });
+    }
+    return out;
+}
+
+function summarise(results: NamedResult[]): DoctorSummary {
+    const s: DoctorSummary = { total: results.length, ok: 0, warn: 0, fail: 0, skip: 0 };
+    for (const r of results) s[r.status]++;
+    return s;
+}
+
 export function registerDoctorCommand(program: Command): void {
     program
         .command('doctor')
         .description(
             'Run environment + install + runtime sanity checks. Read-only; safe alongside a live daemon. Exits non-zero on any failure.',
         )
-        .action(async () => {
-            const checks = await buildChecks();
-            let failed = 0;
-            let warned = 0;
-            for (const check of checks) {
-                let result: CheckResult;
-                try {
-                    result = await check.run();
-                } catch (err) {
-                    const message = err instanceof Error ? err.message : String(err);
-                    result = { status: 'fail', detail: message };
+        .option(
+            '--format <fmt>',
+            'output format: "human" (default, colour-coded table) or "json" (machine-readable)',
+            'human',
+        )
+        .action(async (opts: { format: string }) => {
+            if (opts.format !== 'human' && opts.format !== 'json') {
+                process.stderr.write(`error: --format must be "human" or "json" (got "${opts.format}")\n`);
+                process.exit(2);
+            }
+
+            const results = await runChecks();
+            const summary = summarise(results);
+
+            if (opts.format === 'json') {
+                const payload = {
+                    version: pkgVersion(),
+                    summary,
+                    checks: results,
+                };
+                process.stdout.write(JSON.stringify(payload, null, 2) + '\n');
+            } else {
+                for (const r of results) {
+                    process.stdout.write(renderCheck(r.status, r.name, r.detail));
                 }
-                if (result.status === 'fail') failed++;
-                if (result.status === 'warn') warned++;
-                process.stdout.write(renderCheck(result.status, check.name, result.detail));
+                const tail =
+                    summary.warn > 0
+                        ? ` (${summary.warn} warning${summary.warn === 1 ? '' : 's'})`
+                        : '';
+                if (summary.fail > 0) {
+                    process.stdout.write(`\n${summary.fail} check(s) failed${tail}.\n`);
+                } else {
+                    process.stdout.write(`\nall ${summary.total} checks passed${tail}.\n`);
+                }
             }
-            const tail = warned > 0 ? ` (${warned} warning${warned === 1 ? '' : 's'})` : '';
-            if (failed > 0) {
-                process.stdout.write(`\n${failed} check(s) failed${tail}.\n`);
-                process.exit(1);
-            }
-            process.stdout.write(`\nall ${checks.length} checks passed${tail}.\n`);
+
+            if (summary.fail > 0) process.exit(1);
         });
 }

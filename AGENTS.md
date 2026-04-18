@@ -11,8 +11,8 @@
 | User wants to… | Command / entry point |
 |----------------|------------------------|
 | Scaffold a fresh install (wallet + config) | `automaton init [--network testnet] [--import-mnemonic <f>] [--password-file <f>]` |
-| Verify the install | `automaton doctor` — install + config + chain + lockfile layers |
-| See operator state at a glance | `automaton status` — balance, registration, drift, endpoints |
+| Verify the install | `automaton doctor` — install + config + chain + lockfile layers; add `--format json` for agent parsing |
+| See operator state at a glance | `automaton status` — balance, registration, drift, endpoints; add `--format json` for stable machine-readable output |
 | Register on-chain with stake | `automaton stake register <amount>` |
 | Top up existing stake | `automaton stake increase <amount>` |
 | Start the cooldown + withdraw later | `automaton stake request-unstake` → wait → `automaton stake withdraw` |
@@ -74,7 +74,7 @@ Dockerfile                       # multi-stage: node:22-alpine builder → distr
 scripts/
   release.sh                     # dry-run-by-default release helper
   check-shebang.mjs              # postbuild guard
-tests/                           # jest specs, 292 total across 22 suites
+tests/                           # jest specs (+ DocsSurface.spec.ts drift guard + Integration.spec.ts sandbox)
 docs/
   quickstart.md ops.md troubleshooting.md
 ```
@@ -171,4 +171,16 @@ const snap = await collectChainSnapshot(runtime, walletAddr, {
 3. `docs/troubleshooting.md` — operator-facing symptom → fix table. Load on debugging questions.
 4. `docs/ops.md` — deployment reference. Load for systemd/Docker questions.
 5. `docs/quickstart.md` — end-to-end flow. Load for onboarding questions.
-6. `../kronos/CLAUDE.md` + `../forgeton/CLAUDE.md` — contract-side architecture. Load when the question is about job execution, staking, slashing semantics.
+6. `docs/phases.md` — past-tense phase history (D.1 → D.15). Load only for "why is it like this?" archaeology.
+7. `../kronos/CLAUDE.md` + `../forgeton/CLAUDE.md` — contract-side architecture. Load when the question is about job execution, staking, slashing semantics.
+
+Folder-level `src/*/README.md` stubs point back to the CLAUDE.md navigator. Landing cold in `src/chain/submit.ts`? The sibling `src/chain/README.md` names every file in the directory + points up.
+
+## Slash commands (`.claude/commands/`)
+
+Task-shaped recipes invocable from a Claude Code session:
+
+- `/verify` · `/preflight` · `/dev <args>` — build/test/run gates.
+- `/navigate <task>` — map intent to a file via CLAUDE.md's navigator.
+- `/new-subcommand` · `/new-metric` · `/new-handler` · `/new-config-field` — scaffolders matching the recipes in §Common task recipes above.
+- `/explain-error <code-or-message>` — TVM exit codes + typed-error dispatch.

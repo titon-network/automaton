@@ -7,11 +7,14 @@
 
 import { Command } from 'commander';
 import { LogLevelSchema } from '../../config/schema';
-import { createPinoLogger, runDaemon } from '../../daemon';
+import { runDaemon, type LogFormat, type RunDaemonOptions } from '../../daemon';
 
 interface RunOptions {
     logLevel?: string;
+    logFormat?: string;
 }
+
+const LOG_FORMATS: readonly LogFormat[] = ['pretty', 'json', 'auto'];
 
 export function registerRunCommand(program: Command): void {
     program
@@ -26,8 +29,13 @@ export function registerRunCommand(program: Command): void {
             '--log-level <level>',
             'trace / debug / info / warn / error (overrides config.logLevel and AUTOMATON_LOG_LEVEL env)',
         )
+        .option(
+            '--log-format <fmt>',
+            'pretty / json / auto (default: auto — pretty on TTY, json otherwise). Override to force JSON for testing on a terminal, or pretty when attached to a named pipe.',
+        )
         .action(async (options: RunOptions) => {
-            let level: ReturnType<typeof LogLevelSchema.parse> | undefined;
+            const runOptions: RunDaemonOptions = {};
+
             if (options.logLevel !== undefined) {
                 const parsed = LogLevelSchema.safeParse(options.logLevel);
                 if (!parsed.success) {
@@ -35,10 +43,19 @@ export function registerRunCommand(program: Command): void {
                         `--log-level must be one of ${LogLevelSchema.options.join(' | ')}, got: ${options.logLevel}`,
                     );
                 }
-                level = parsed.data;
+                runOptions.logLevel = parsed.data;
             }
-            const logger = level !== undefined ? createPinoLogger({ level }) : undefined;
-            const exitCode = await runDaemon(logger !== undefined ? { logger } : {});
+
+            if (options.logFormat !== undefined) {
+                if (!(LOG_FORMATS as readonly string[]).includes(options.logFormat)) {
+                    throw new Error(
+                        `--log-format must be one of ${LOG_FORMATS.join(' | ')}, got: ${options.logFormat}`,
+                    );
+                }
+                runOptions.logFormat = options.logFormat as LogFormat;
+            }
+
+            const exitCode = await runDaemon(runOptions);
             process.exit(exitCode);
         });
 }

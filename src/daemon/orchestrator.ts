@@ -59,7 +59,8 @@ import {
     type WorkerCounters,
     type WorkerLogger,
 } from '../worker';
-import { createPinoLogger } from './logger';
+import { createPinoLogger, type LogFormat } from './logger';
+import type { LogLevel } from '../config/schema';
 import { loopCycles, waitForDrain } from './loop';
 import { createDaemonMetrics, type DaemonMetrics } from './metrics';
 import {
@@ -82,6 +83,10 @@ export interface RunDaemonOptions {
     externalAbort?: AbortSignal;
     /** Suppress HTTP server startup — tests that don't need endpoints. */
     skipHealthServer?: boolean;
+    /** Override config.logLevel when building the default logger. Ignored if `logger` is passed. */
+    logLevel?: LogLevel;
+    /** Pick json / pretty / auto for the default logger. Ignored if `logger` is passed. */
+    logFormat?: LogFormat;
 }
 
 const DEFAULT_SHUTDOWN_TIMEOUT_MS = 30_000;
@@ -112,9 +117,15 @@ export async function runDaemon(options: RunDaemonOptions = {}): Promise<number>
     const config = loadConfig();
     const keystore = loadKeystore();
 
-    // Logger level resolution: explicit options.logger > config.logLevel
-    // > 'info' default. CLI `--log-level` folds into options.logger.
-    const logger = options.logger ?? createPinoLogger({ level: config.logLevel });
+    // Logger resolution: explicit options.logger > constructed from flags.
+    //   level  ← options.logLevel  ?? config.logLevel
+    //   format ← options.logFormat ?? 'auto' (pretty on TTY, json otherwise)
+    const logger =
+        options.logger ??
+        createPinoLogger({
+            level: options.logLevel ?? config.logLevel,
+            ...(options.logFormat !== undefined ? { format: options.logFormat } : {}),
+        });
     const metrics = options.metrics ?? createDaemonMetrics();
     const counters = options.counters ?? metrics.counters;
 

@@ -196,28 +196,87 @@ export async function runStatus(): Promise<string> {
     return renderStatus(await collectStatusData());
 }
 
+/** TON amount encoded in two forms: exact nano (string-safe) + human-readable decimal TON. */
+export interface TonAmountJson {
+    nano: string;
+    ton: string;
+}
+
+export type AutomatonState = 'active' | 'inactive' | 'not-registered' | 'unavailable';
+
+export interface AutomatonJsonBody {
+    state: AutomatonState;
+    stake?: TonAmountJson;
+    isActive?: boolean;
+    slashCount?: number;
+    registeredAt?: string;
+}
+
 /**
- * Machine-readable counterpart to `renderStatus`. Stable shape for agents
- * and CI: bigints surface as `{ nano, ton }` pairs (nano is ground truth,
- * ton is fromNano for convenience). `apiKey` on endpoints is stripped —
- * `status --format json` is safe to paste into an issue.
+ * `automaton status --format json` payload. Stable shape for agents + CI:
+ * - TON amounts encoded as `{ nano, ton }` (nano is ground truth).
+ * - Counters encoded as base-10 strings (bigint-safe).
+ * - Endpoint apiKeys stripped.
+ * - `deploymentUnavailable` surfaces the mainnet "not yet live" note.
  */
-export function renderStatusJson(details: StatusData): string {
+export interface StatusJsonPayload {
+    version: string;
+    network: 'testnet' | 'mainnet';
+    paths: { config: string; keystore: string };
+    wallet: {
+        address: string;
+        publicKey: string;
+        balance: TonAmountJson | null;
+    };
+    automaton: AutomatonJsonBody;
+    pool:
+        | {
+              address: string;
+              activeCount: string | null;
+              schemaVersion: number | null;
+          }
+        | null;
+    registry:
+        | {
+              address: string;
+              schemaVersion: number | null;
+              syncesReceived: string | null;
+              slashesRequested: string | null;
+          }
+        | null;
+    endpoints: {
+        current: string | null;
+        configured: { url: string }[];
+    };
+    daemon: {
+        lockfile: { kind: string; detail: string };
+        metricsPort: number;
+        metricsHost: string;
+    };
+    errors: string[];
+    deploymentUnavailable: string | null;
+}
+
+/**
+ * Build the `StatusJsonPayload` from a gathered `StatusData`. Exported
+ * separately from the serialiser so agents can consume the typed object
+ * without re-parsing the JSON string.
+ */
+export function buildStatusPayload(details: StatusData): StatusJsonPayload {
     const { config, keystore, runtime, deploymentUnavailable, snapshot } = details;
 
-    const walletBalance =
+    const walletBalance: TonAmountJson | null =
         snapshot?.balance !== undefined
             ? { nano: snapshot.balance.toString(), ton: fromNano(snapshot.balance) }
             : null;
 
-    type AutomatonState = 'active' | 'inactive' | 'not-registered' | 'unavailable';
     let automatonState: AutomatonState;
     if (snapshot === undefined || snapshot.automaton === undefined) automatonState = 'unavailable';
     else if (snapshot.automaton === null) automatonState = 'not-registered';
     else automatonState = snapshot.automaton.isActive ? 'active' : 'inactive';
 
     const info = snapshot?.automaton ?? null;
-    const automatonBody =
+    const automatonBody: AutomatonJsonBody =
         info !== null && info !== undefined
             ? {
                   state: automatonState,
@@ -230,7 +289,7 @@ export function renderStatusJson(details: StatusData): string {
 
     const lock = describeLock();
 
-    const payload = {
+    return {
         version: pkgVersion(),
         network: config.network,
         paths: {
@@ -275,8 +334,15 @@ export function renderStatusJson(details: StatusData): string {
         errors: snapshot?.errors ?? [],
         deploymentUnavailable: deploymentUnavailable ?? null,
     };
+}
 
-    return JSON.stringify(payload, null, 2) + '\n';
+/**
+ * Machine-readable counterpart to `renderStatus`. Serialises the payload
+ * built by {@link buildStatusPayload}. Safe to paste into an issue —
+ * endpoint apiKeys are redacted.
+ */
+export function renderStatusJson(details: StatusData): string {
+    return JSON.stringify(buildStatusPayload(details), null, 2) + '\n';
 }
 
 export async function runStatusJson(): Promise<string> {

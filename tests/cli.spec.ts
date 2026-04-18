@@ -145,6 +145,71 @@ describe('automaton CLI scaffold', () => {
         });
     });
 
+    describe('run flags', () => {
+        it('--help advertises --log-format', () => {
+            const { stdout, status } = run(['run', '--help']);
+            expect(status).toBe(0);
+            expect(stdout).toContain('--log-format');
+            expect(stdout).toMatch(/pretty.*json.*auto|pretty \/ json \/ auto/);
+        });
+
+        it('rejects an unknown --log-format with a clear error', () => {
+            const { stdout, status } = run(
+                ['run', '--log-format', 'xml'],
+                { TITON_HOME: '/tmp/titon-fresh-for-run-logformat-spec' },
+            );
+            expect(status).not.toBe(0);
+            expect(stdout).toMatch(/--log-format must be/);
+        });
+    });
+
+    describe('explain-exit-code', () => {
+        it('resolves a known kronos code (human format)', () => {
+            // Just need a code that's known to at least one SDK. 160 is
+            // a pool code (E_NOT_REGISTERED family); the exact mapping
+            // may change but origin should not be 'unknown'.
+            const { stdout, status } = run(['explain-exit-code', '160']);
+            expect(status).toBe(0);
+            expect(stdout).toMatch(/exit 160/);
+            expect(stdout).not.toMatch(/\(unknown\)/);
+        });
+
+        it('emits structured JSON with --format json', () => {
+            const { stdout, status } = run(['explain-exit-code', '160', '--format', 'json']);
+            expect(status).toBe(0);
+            const parsed = JSON.parse(stdout) as {
+                code: number;
+                origin: string;
+                name: string;
+                message: string;
+            };
+            expect(parsed.code).toBe(160);
+            expect(['kronos', 'forgeton', 'tvm']).toContain(parsed.origin);
+            expect(parsed.name).toBeTruthy();
+        });
+
+        it('extracts a code from an "exit code N" message', () => {
+            const { stdout, status } = run([
+                'explain-exit-code',
+                'reverted with exit code 160 while submitting',
+            ]);
+            expect(status).toBe(0);
+            expect(stdout).toMatch(/exit 160/);
+        });
+
+        it('exits 1 when no code can be extracted', () => {
+            const { stdout, status } = run(['explain-exit-code', 'just random prose']);
+            expect(status).toBe(1);
+            expect(stdout).toMatch(/could not extract/);
+        });
+
+        it('exits 2 when the code is out of every SDK range', () => {
+            const { stdout, status } = run(['explain-exit-code', '9999']);
+            expect(status).toBe(2);
+            expect(stdout).toMatch(/exit 9999/);
+        });
+    });
+
     describe('config show', () => {
         it('refuses when no config file exists, pointing at init', () => {
             const { stdout, status } = run(['config', 'show'], {

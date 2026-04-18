@@ -358,11 +358,13 @@ async function buildChecks(): Promise<Check[]> {
     return checks;
 }
 
-interface NamedResult extends CheckResult {
+/** One check's resolved result, keyed by name. Part of {@link DoctorJsonPayload}. */
+export interface NamedCheckResult extends CheckResult {
     name: string;
 }
 
-interface DoctorSummary {
+/** Tally by status. Part of {@link DoctorJsonPayload}. */
+export interface DoctorSummary {
     total: number;
     ok: number;
     warn: number;
@@ -370,9 +372,19 @@ interface DoctorSummary {
     skip: number;
 }
 
-async function runChecks(): Promise<NamedResult[]> {
+/**
+ * `automaton doctor --format json` payload. Stable shape; consumers can
+ * import the type directly. `process.exit(1)` fires iff `summary.fail > 0`.
+ */
+export interface DoctorJsonPayload {
+    version: string;
+    summary: DoctorSummary;
+    checks: NamedCheckResult[];
+}
+
+async function runChecks(): Promise<NamedCheckResult[]> {
     const checks = await buildChecks();
-    const out: NamedResult[] = [];
+    const out: NamedCheckResult[] = [];
     for (const check of checks) {
         let result: CheckResult;
         try {
@@ -386,11 +398,17 @@ async function runChecks(): Promise<NamedResult[]> {
     return out;
 }
 
-function summarise(results: NamedResult[]): DoctorSummary {
+function summarise(results: NamedCheckResult[]): DoctorSummary {
     const s: DoctorSummary = { total: results.length, ok: 0, warn: 0, fail: 0, skip: 0 };
     for (const r of results) s[r.status]++;
     return s;
 }
+
+function buildDoctorPayload(results: NamedCheckResult[]): DoctorJsonPayload {
+    return { version: pkgVersion(), summary: summarise(results), checks: results };
+}
+
+export { runChecks, summarise, buildDoctorPayload };
 
 export function registerDoctorCommand(program: Command): void {
     program
@@ -410,14 +428,10 @@ export function registerDoctorCommand(program: Command): void {
             }
 
             const results = await runChecks();
-            const summary = summarise(results);
+            const payload = buildDoctorPayload(results);
+            const { summary } = payload;
 
             if (opts.format === 'json') {
-                const payload = {
-                    version: pkgVersion(),
-                    summary,
-                    checks: results,
-                };
                 process.stdout.write(JSON.stringify(payload, null, 2) + '\n');
             } else {
                 for (const r of results) {

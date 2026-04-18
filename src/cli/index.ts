@@ -10,6 +10,7 @@ import { Command } from 'commander';
 import { registerCompletionCommand } from './commands/completion';
 import { registerConfigCommand } from './commands/config';
 import { registerDoctorCommand } from './commands/doctor';
+import { registerExplainCommand } from './commands/explain';
 import { registerInitCommand } from './commands/init';
 import { registerRunCommand } from './commands/run';
 import { registerStakeCommand } from './commands/stake';
@@ -34,6 +35,7 @@ function buildProgram(): Command {
     registerRunCommand(program);
     registerConfigCommand(program);
     registerCompletionCommand(program);
+    registerExplainCommand(program);
 
     return program;
 }

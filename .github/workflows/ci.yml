@@ -21,19 +21,19 @@ jobs:
       #   titon/kronos/     ← sibling SDK (file: ../kronos/sdk)
       #   titon/forgeton/   ← sibling SDK (file: ../forgeton/sdk)
       - name: Checkout automaton
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           path: titon/automaton
 
       - name: Checkout kronos (sibling SDK)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: titon-network/kronos
           path: titon/kronos
           ref: main
 
       - name: Checkout forgeton (sibling SDK)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: titon-network/forgeton
           path: titon/forgeton

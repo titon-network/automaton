@@ -7,6 +7,8 @@
 // failure surfaces a human-readable explanation alongside the raw message.
 
 import { Command } from 'commander';
+import { registerCompletionCommand } from './commands/completion';
+import { registerConfigCommand } from './commands/config';
 import { registerDoctorCommand } from './commands/doctor';
 import { registerInitCommand } from './commands/init';
 import { registerRunCommand } from './commands/run';
@@ -30,6 +32,8 @@ function buildProgram(): Command {
     registerDoctorCommand(program);
     registerStakeCommand(program);
     registerRunCommand(program);
+    registerConfigCommand(program);
+    registerCompletionCommand(program);
 
     return program;
 }

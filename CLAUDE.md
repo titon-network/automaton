@@ -6,7 +6,7 @@
 
 | Task | Primary file(s) | Supporting |
 |------|-----------------|------------|
-| Add a new CLI subcommand | `src/cli/commands/<name>.ts` | Register via `registerXCommand(program)` in `src/cli/index.ts`; follow the stub pattern (each file is one command tree) |
+| Add a new CLI subcommand | `src/cli/commands/<name>.ts` | Register via `registerXCommand(program)` in `src/cli/index.ts`; follow the stub pattern (each file is one command tree). Examples: `completion.ts` (static shell scripts), `config.ts` (nested `show` subcommand) |
 | Add an interactive prompt | `src/cli/prompt.ts` | `promptText` / `promptChoice` / `promptConfirm` — all throw `NotInteractiveError` on non-TTY; use a flag escape hatch for CI |
 | Add a new config field | `src/config/schema.ts` | If runtime-tunable, add env override in `src/config/load.ts` (`applyEnvOverlay`); default goes in `defaultConfig()`; bump `CONFIG_VERSION` if semantics change |
 | Add an env var override | `src/config/load.ts` | Narrow allow-list — `applyEnvOverlay` re-uses schema validators so types stay honest |

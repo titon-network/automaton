@@ -1,5 +1,7 @@
 # @titon/automaton
 
+> **AI assistants / LLM-driven development — start here:** read [`AGENTS.md`](AGENTS.md) (compact quick reference) or [`CLAUDE.md`](CLAUDE.md) (full architecture + navigator tables). Task recipes live in [`.claude/commands/`](.claude/commands/). Single-command gate: `pnpm run verify`. Machine-readable CLI: `automaton doctor --format json` · `automaton status --format json`.
+
 The off-chain operator node for the [Titon](https://github.com/titon) protocol suite on TON.
 
 Stake once with [ForgeTON](https://github.com/titon/forgeton) (shared-security staking pool) and earn from every admitted consumer product — today Kronos automation; tomorrow Fortuna VRF, oracles, functions.
@@ -101,6 +103,8 @@ The daemon prints one JSON line per event to stdout and exposes Prometheus metri
 | `automaton stake cancel-unstake` | Abort a pending unstake and stay active. |
 | `automaton stake withdraw` | Finalize after the cooldown — returns the full stake to the wallet. |
 | `automaton run` | Start the daemon. Foreground; use systemd or Docker to daemonize. Signals: `SIGTERM`/`SIGINT` = graceful shutdown (drains in-flight txs, flushes state); `SIGHUP` = warn-and-ignore (restart to reload config). `--log-level` overrides `config.logLevel`. |
+| `automaton config show` | Inspect the effective config (file + env overlay), with env overrides surfaced as a delta block. `--format json` dumps a stable payload (apiKeys redacted). Read-only. |
+| `automaton completion <shell>` | Print a bash / zsh / fish completion script. Install with `eval "$(automaton completion bash)"` or dump to your shell's fpath. |
 
 Every subcommand accepts `--help`.
 

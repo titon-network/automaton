@@ -108,4 +108,60 @@ describe('automaton CLI scaffold', () => {
         expect(status).not.toBe(0);
         expect(stdout.toLowerCase()).toMatch(/not a tty|tty/);
     });
+
+    describe('completion', () => {
+        it('--help lists the three supported shells', () => {
+            const { stdout, status } = run(['completion', '--help']);
+            expect(status).toBe(0);
+            expect(stdout).toMatch(/bash.*zsh.*fish|bash, zsh, fish/);
+        });
+
+        it('bash emits a script containing the _automaton_completions function', () => {
+            const { stdout, status } = run(['completion', 'bash']);
+            expect(status).toBe(0);
+            expect(stdout).toContain('_automaton_completions');
+            expect(stdout).toContain('complete -F _automaton_completions automaton');
+            expect(stdout).toContain('stake_subs');
+        });
+
+        it('zsh emits a #compdef directive + _automaton function', () => {
+            const { stdout, status } = run(['completion', 'zsh']);
+            expect(status).toBe(0);
+            expect(stdout).toMatch(/^#compdef automaton/);
+            expect(stdout).toContain('_automaton()');
+        });
+
+        it('fish emits __fish_use_subcommand entries', () => {
+            const { stdout, status } = run(['completion', 'fish']);
+            expect(status).toBe(0);
+            expect(stdout).toContain('__fish_use_subcommand');
+            expect(stdout).toContain('register increase request-unstake cancel-unstake withdraw');
+        });
+
+        it('unknown shell exits 2 with a clear error', () => {
+            const { stdout, status } = run(['completion', 'powershell']);
+            expect(status).toBe(2);
+            expect(stdout).toMatch(/unsupported shell.*Supported: bash, zsh, fish/);
+        });
+    });
+
+    describe('config show', () => {
+        it('refuses when no config file exists, pointing at init', () => {
+            const { stdout, status } = run(['config', 'show'], {
+                TITON_HOME: '/tmp/titon-fresh-for-config-show-spec',
+            });
+            expect(status).not.toBe(0);
+            expect(stdout).toMatch(/no config/);
+            expect(stdout).toMatch(/automaton init/);
+        });
+
+        it('rejects an invalid --format with exit 2', () => {
+            const { stdout, status } = run(
+                ['config', 'show', '--format', 'toml'],
+                { TITON_HOME: '/tmp/titon-fresh-for-config-show-spec-fmt' },
+            );
+            expect(status).toBe(2);
+            expect(stdout).toMatch(/--format must be/);
+        });
+    });
 });

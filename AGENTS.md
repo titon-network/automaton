@@ -18,6 +18,8 @@
 | Start the cooldown + withdraw later | `automaton stake request-unstake` → wait → `automaton stake withdraw` |
 | Abort a pending unstake | `automaton stake cancel-unstake` |
 | Run the daemon (poll + execute) | `automaton run [--log-level info]` |
+| Inspect the effective config + env overlay | `automaton config show [--format json]` |
+| Install shell completion | `eval "$(automaton completion bash)"` (or `zsh` / `fish`) |
 | Do any of the above non-interactively | Every prompt has an equivalent flag; `AUTOMATON_PASSWORD` env bypasses the password prompt |
 | Scrape Prometheus metrics | `http://127.0.0.1:9090/metrics` |
 | Liveness / readiness probes | `/healthz` (staleness-gated) · `/readyz` (lockfile + wallet + stake + rpc subchecks) |
@@ -28,7 +30,7 @@
 src/
   cli/
     index.ts                     # commander entry (bin → dist/cli/index.js); top-level error surface + explainExitCode
-    commands/{init,doctor,status,stake,run}.ts
+    commands/{init,doctor,status,stake,run,config,completion}.ts
     prompt.ts                    # readline text/choice/confirm (non-TTY throws NotInteractiveError)
     version.ts                   # reads package.json at runtime
   config/

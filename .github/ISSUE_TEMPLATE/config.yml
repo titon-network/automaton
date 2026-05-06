@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/titon-network/automaton/security/advisories/new
+    about: Please use private disclosure for anything that could expose stake or key material. See SECURITY.md.
+  - name: Documentation question
+    url: https://github.com/titon-network/automaton/blob/main/docs/troubleshooting.md
+    about: Check docs/troubleshooting.md first — most symptoms have a named fix.

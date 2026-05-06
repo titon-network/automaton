@@ -1,0 +1,51 @@
+name: Feature request
+description: A new command, flag, config knob, metric, or integration.
+labels: ["enhancement"]
+title: "[feat] "
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: Lead with the operator (or agent) pain point. Features without a named user rarely ship.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behaviour
+      description: |
+        Concrete sketch — ideally the CLI / config surface, like:
+        ```
+        automaton <new-command> [--flag]
+        ```
+        or
+        ```
+        config.newField: <type>
+        ```
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What else did you think of, and why didn't you pick it?
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope / breaking change
+      description: Is this additive or does it touch `CONFIG_VERSION` / `KEYSTORE_VERSION` / operator-facing metric names?
+
+  - type: dropdown
+    id: willingness
+    attributes:
+      label: Would you be willing to contribute a PR?
+      options:
+        - "Yes — I'll open one"
+        - "Maybe, with guidance"
+        - "No, just filing"
+    validations:
+      required: true

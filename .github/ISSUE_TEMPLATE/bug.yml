@@ -1,0 +1,103 @@
+name: Bug report
+description: Something in automaton misbehaves or crashes.
+labels: ["bug"]
+title: "[bug] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug. A few data points up front save ~80% of back-and-forth.
+        **If this is a security-sensitive issue, do NOT file it here** — see [SECURITY.md](../SECURITY.md).
+
+  - type: input
+    id: version
+    attributes:
+      label: automaton --version
+      description: Output of `automaton --version`.
+      placeholder: "0.1.0"
+    validations:
+      required: true
+
+  - type: input
+    id: node
+    attributes:
+      label: node --version
+      description: Node runtime version. Automaton requires ≥ 22.
+      placeholder: "v22.22.2"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install
+    attributes:
+      label: How was it installed?
+      options:
+        - from source (git clone + pnpm install)
+        - Docker (titon/automaton:latest)
+        - systemd unit (contrib/automaton.service)
+        - npm (when published)
+        - other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: network
+    attributes:
+      label: Network
+      options:
+        - testnet
+        - mainnet
+    validations:
+      required: true
+
+  - type: textarea
+    id: doctor
+    attributes:
+      label: automaton doctor output
+      description: Paste `automaton doctor` (or `automaton doctor --format json`) output. Redact the wallet address if you're paranoid.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: status
+    attributes:
+      label: automaton status output
+      description: Paste `automaton status --format json` if relevant. Endpoint apiKeys are already redacted by the command.
+      render: json
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: What command did you run? What did the daemon do?
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log lines
+      description: |
+        Trim to the minimum. pino redacts `password` / `mnemonic` / `privateKey` / `seed` / `secretKey`,
+        but re-check before pasting.
+      render: text
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Pre-submit checks
+      options:
+        - label: I searched [docs/troubleshooting.md](../docs/troubleshooting.md) for my symptom.
+          required: true
+        - label: I'm on a supported version (see [SECURITY.md](../SECURITY.md) §Supported versions).
+          required: true
+        - label: This is NOT a security issue that could expose stake or key material (if it is, I'll email security@titon.network instead).
+          required: true

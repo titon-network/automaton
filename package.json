@@ -1,0 +1,87 @@
+{
+    "name": "@titon-network/automaton",
+    "version": "0.6.0",
+    "description": "Production-ready off-chain automaton node for the Titon protocol suite (Kronos automation, Fortuna VRF). Stake once with ForgeTON, earn across every admitted consumer product. Built on TSA-audited SDKs (forgeton, atlas, kronos, fortuna — zero findings each).",
+    "license": "MIT",
+    "keywords": [
+        "ton",
+        "titon",
+        "kronos",
+        "forgeton",
+        "automaton",
+        "shared-security",
+        "restaking",
+        "automation",
+        "blockchain"
+    ],
+    "bin": {
+        "automaton": "./dist/cli/index.js"
+    },
+    "files": [
+        "dist",
+        "contrib/automaton.service",
+        "contrib/automaton.env.example",
+        "contrib/aws/lightsail/*.tf",
+        "contrib/aws/lightsail/*.tftpl",
+        "contrib/aws/lightsail/README.md",
+        "scripts/preflight.mjs",
+        "README.md",
+        "AGENTS.md",
+        "LICENSE"
+    ],
+    "scripts": {
+        "build": "tsc -p tsconfig.json",
+        "typecheck": "tsc -p tsconfig.json --noEmit",
+        "typecheck:watch": "tsc -p tsconfig.json --noEmit --watch",
+        "clean": "rm -rf dist",
+        "clean:all": "rm -rf dist node_modules coverage",
+        "test": "jest --runInBand",
+        "test:watch": "jest --watch",
+        "cli": "node dist/cli/index.js",
+        "dev": "ts-node --transpile-only src/cli/index.ts",
+        "smoke": "node dist/cli/index.js --version && node dist/cli/index.js doctor && node dist/cli/index.js playground --ticks 1 --tick-interval 0 --no-fortuna --json > /dev/null",
+        "verify": "pnpm run build && pnpm run test && pnpm run smoke",
+        "preflight": "node scripts/preflight.mjs",
+        "postinstall": "node scripts/preflight.mjs --warn-only",
+        "prepublishOnly": "pnpm run clean && pnpm run build && chmod +x dist/cli/index.js && node scripts/check-shebang.mjs",
+        "sync:sdks": "cd ../forgeton/sdk && pnpm run build && cd ../../kronos/sdk && pnpm run build && cd ../../atlas/sdk && pnpm run build && cd ../../fortuna/sdk && pnpm run build && cd ../../automaton && pnpm install --force"
+    },
+    "dependencies": {
+        "@ton/core": "^0.63.0",
+        "@ton/crypto": "^3.3.0",
+        "@ton/sandbox": "^0.41.0",
+        "@ton/ton": "^15.3.0",
+        "commander": "^12.1.0",
+        "@titon-network/forgeton-sdk": "^0.8.1",
+        "@titon-network/kronos-sdk": "^0.8.2",
+        "@titon-network/atlas-sdk": "^0.2.0",
+        "@titon-network/fortuna-sdk": "^0.3.1",
+        "pino": "^9.5.0",
+        "pino-pretty": "^11.3.0",
+        "prom-client": "^15.1.3",
+        "zod": "^3.23.8"
+    },
+    "devDependencies": {
+        "@ton/test-utils": "^0.12.0",
+        "@types/jest": "^30.0.0",
+        "@types/node": "^22.0.0",
+        "jest": "^30.0.0",
+        "ts-jest": "^29.1.0",
+        "ts-node": "^10.9.0",
+        "typescript": "^5.5.0"
+    },
+    "engines": {
+        "node": ">=22"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/titon-network/automaton.git"
+    },
+    "homepage": "https://github.com/titon-network/automaton#readme",
+    "bugs": {
+        "url": "https://github.com/titon-network/automaton/issues"
+    },
+    "publishConfig": {
+        "access": "public"
+    }
+}

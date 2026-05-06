@@ -1,0 +1,37 @@
+version: 2
+updates:
+  # npm packages (managed by pnpm — dependabot understands the lockfile format
+  # via the `package-ecosystem: npm` ecosystem, which handles pnpm-lock.yaml too).
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels: ["dependencies"]
+    groups:
+      # Group all runtime deps into one PR per week to keep review manageable.
+      runtime:
+        dependency-type: production
+        update-types:
+          - minor
+          - patch
+      dev:
+        dependency-type: development
+        update-types:
+          - minor
+          - patch
+    ignore:
+      # `file:` deps on the sibling SDKs are managed via sync:sdks, not
+      # dependabot — they have no registry version to resolve against.
+      - dependency-name: kronos-sdk
+      - dependency-name: forgeton-sdk
+
+  # GitHub Actions version bumps.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3
+    labels: ["dependencies", "ci"]

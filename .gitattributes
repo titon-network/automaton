@@ -1,0 +1,19 @@
+# Git line-ending enforcement. Matches .editorconfig's LF stance.
+# https://git-scm.com/docs/gitattributes
+
+* text=auto eol=lf
+
+# Keep binary files untouched.
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.zip binary
+*.gz binary
+*.tar binary
+
+# Shell scripts must stay LF even on Windows clones.
+*.sh text eol=lf
+scripts/*.mjs text eol=lf
+scripts/*.js text eol=lf

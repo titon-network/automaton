@@ -1,0 +1,34 @@
+# .dockerignore is resolved relative to the BUILD CONTEXT, which per
+# our Dockerfile instructions is the PARENT directory (titon/). Trim
+# host state that shouldn't bleed into the image: node_modules,
+# build artefacts, test harnesses, git + IDE clutter.
+
+**/node_modules
+**/dist
+**/build
+**/coverage
+**/.next
+**/.turbo
+
+# Per-repo tooling + secrets
+**/.env
+**/.env.*
+!**/.env.example
+**/.git
+**/.github
+**/.gitignore
+**/.vscode
+**/.idea
+**/*.log
+
+# Automaton-specific throwaways
+automaton/tests/tmp
+automaton/.titon
+
+# Blueprint / Tolk build artefacts from sibling repos (huge, unused
+# at runtime — SDK consumption goes through the already-built
+# artifacts/ in each sdk/ dir).
+kronos/build
+kronos/temp
+forgeton/build
+forgeton/temp

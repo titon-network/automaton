@@ -1,0 +1,25 @@
+# CODEOWNERS — reviewers auto-assigned on PRs touching the matched paths.
+# Syntax: https://docs.github.com/articles/about-code-owners
+
+# Default: everyone on the core team.
+*                                  @titon-network/core
+
+# Security-sensitive modules get an extra review hop.
+src/wallet/                        @titon-network/core @titon-network/security
+src/chain/submit.ts                @titon-network/core @titon-network/security
+src/chain/lockfile.ts              @titon-network/core @titon-network/security
+src/errors/                        @titon-network/core @titon-network/security
+SECURITY.md                        @titon-network/security
+
+# Distribution + release artefacts — tag the release maintainer.
+Dockerfile                         @titon-network/core @titon-network/release
+contrib/                           @titon-network/core @titon-network/release
+scripts/release.sh                 @titon-network/release
+.github/workflows/                 @titon-network/core @titon-network/release
+
+# Docs drift guard — anyone touching operator-facing docs should get
+# a tests/DocsSurface.spec.ts heads-up on the review.
+README.md                          @titon-network/core
+docs/                              @titon-network/core
+AGENTS.md                          @titon-network/core
+CLAUDE.md                          @titon-network/core

@@ -1,0 +1,63 @@
+name: verify
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: build + test + smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      # Layout the three-repo monorepo under ./titon/ so `file:` deps resolve:
+      #   titon/automaton/  ← this repo, checked out as "automaton"
+      #   titon/kronos/     ← sibling SDK (file: ../kronos/sdks/typescript)
+      #   titon/forgeton/   ← sibling SDK (file: ../forgeton/sdks/typescript)
+      - name: Checkout automaton
+        uses: actions/checkout@v4
+        with:
+          path: titon/automaton
+
+      - name: Checkout kronos (sibling SDK)
+        uses: actions/checkout@v4
+        with:
+          repository: titon-network/kronos
+          path: titon/kronos
+          ref: main
+
+      - name: Checkout forgeton (sibling SDK)
+        uses: actions/checkout@v4
+        with:
+          repository: titon-network/forgeton
+          path: titon/forgeton
+          ref: main
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+          cache-dependency-path: titon/automaton/pnpm-lock.yaml
+
+      # sync:sdks builds both sibling SDKs, then `pnpm install --force`
+      # inside automaton re-snapshots them under node_modules/. Postinstall
+      # runs preflight (--warn-only) as a sanity check.
+      - name: Sync sibling SDKs
+        working-directory: titon/automaton
+        run: pnpm run sync:sdks
+
+      - name: Verify (build + test + smoke)
+        working-directory: titon/automaton
+        run: pnpm run verify

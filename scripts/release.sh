@@ -94,13 +94,25 @@ case "$BUMP" in
         ;;
     *)
         NEW="$BUMP"
-        if ! [[ "$NEW" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        # Accept stable (1.2.3) AND pre-release (1.2.3-alpha.0 / -rc.1 / -beta.4).
+        # Pre-release dist-tag is set in step 6 — `pnpm publish --tag next` for
+        # any version containing a hyphen, otherwise default `latest`.
+        if ! [[ "$NEW" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
             echo "error: '$NEW' is not a valid semver" >&2
             exit 1
         fi
         ;;
 esac
 echo "=== new version: $NEW ==="
+
+# Pre-release versions ship under the `next` dist-tag so existing
+# `npm install @titon-network/automaton@latest` continues to pull the
+# last stable. Stable versions go under `latest` (pnpm's default).
+PUBLISH_TAG_FLAG=""
+if [[ "$NEW" == *-* ]]; then
+    PUBLISH_TAG_FLAG="--tag next"
+    echo "=== pre-release detected — will publish under dist-tag 'next' ==="
+fi
 
 # Preserve the file's existing indent so the diff only touches the
 # version line — re-serialising with a hard-coded width would rewrite
@@ -123,7 +135,7 @@ cat <<NEXT
 
   # Publish to npm (requires the sibling SDKs to be published first
   # — see CLAUDE.md §"Distribution limitations"):
-  pnpm publish --access=public
+  pnpm publish --access=public $PUBLISH_TAG_FLAG
 
   # Build + push the multi-arch Docker image (build context = parent):
   cd .. && docker buildx build \\

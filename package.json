@@ -1,6 +1,6 @@
 {
     "name": "@titon-network/automaton",
-    "version": "0.9.0",
+    "version": "0.9.1",
     "description": "Production-ready off-chain automaton node for the Titon protocol suite (Kronos automation, Fortuna VRF, Themis sealed-bid threshold-decryption). Stake once with ForgeTON, earn across every admitted consumer product. Built on TSA-audited SDKs (forgeton, atlas, kronos, fortuna — zero findings each).",
     "license": "MIT",
     "keywords": [

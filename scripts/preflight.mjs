@@ -43,14 +43,16 @@ if (!siblingsPresent) {
     process.exit(0);
 }
 
-// forgeton + kronos are always required (Phase D surface); atlas + fortuna are
-// only required when a sibling repo is checked out — operators building from
-// the npm tarball never see atlas/fortuna and shouldn't fail on their absence.
+// forgeton + kronos are always required (Phase D surface); atlas + fortuna +
+// themis are only required when a sibling repo is checked out — operators
+// building from the npm tarball never see them and shouldn't fail on their
+// absence.
 const SDKS = [
     { name: '@titon-network/forgeton-sdk', sibling: '../forgeton/sdks/typescript', optional: false },
     { name: '@titon-network/kronos-sdk', sibling: '../kronos/sdks/typescript', optional: false },
     { name: '@titon-network/atlas-sdk', sibling: '../atlas/sdks/typescript', optional: true },
     { name: '@titon-network/fortuna-sdk', sibling: '../fortuna/sdks/typescript', optional: true },
+    { name: '@titon-network/themis-sdk', sibling: '../themis/sdks/typescript', optional: true },
 ];
 
 const issues = [];

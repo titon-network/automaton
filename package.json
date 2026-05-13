@@ -1,13 +1,14 @@
 {
     "name": "@titon-network/automaton",
     "version": "0.8.0",
-    "description": "Production-ready off-chain automaton node for the Titon protocol suite (Kronos automation, Fortuna VRF). Stake once with ForgeTON, earn across every admitted consumer product. Built on TSA-audited SDKs (forgeton, atlas, kronos, fortuna — zero findings each).",
+    "description": "Production-ready off-chain automaton node for the Titon protocol suite (Kronos automation, Fortuna VRF, Themis sealed-bid threshold-decryption). Stake once with ForgeTON, earn across every admitted consumer product. Built on TSA-audited SDKs (forgeton, atlas, kronos, fortuna — zero findings each).",
     "license": "MIT",
     "keywords": [
         "ton",
         "titon",
         "kronos",
         "forgeton",
+        "themis",
         "automaton",
         "shared-security",
         "restaking",
@@ -44,7 +45,7 @@
         "preflight": "node scripts/preflight.mjs",
         "postinstall": "node scripts/preflight.mjs --warn-only",
         "prepublishOnly": "pnpm run clean && pnpm run build && chmod +x dist/cli/index.js && node scripts/check-shebang.mjs",
-        "sync:sdks": "cd ../forgeton/sdks/typescript && pnpm run build && cd ../../../kronos/sdks/typescript && pnpm run build && cd ../../../atlas/sdks/typescript && pnpm run build && cd ../../../fortuna/sdks/typescript && pnpm run build && cd ../../../automaton && pnpm install --force"
+        "sync:sdks": "cd ../forgeton/sdks/typescript && pnpm run build && cd ../../../kronos/sdks/typescript && pnpm run build && cd ../../../atlas/sdks/typescript && pnpm run build && cd ../../../fortuna/sdks/typescript && pnpm run build && cd ../../../themis/sdks/typescript && pnpm run build && cd ../../../automaton && pnpm install --force"
     },
     "dependencies": {
         "@ton/core": "^0.63.0",
@@ -56,6 +57,7 @@
         "@titon-network/kronos-sdk": "^0.8.4",
         "@titon-network/atlas-sdk": "^0.3.0",
         "@titon-network/fortuna-sdk": "^0.4.0",
+        "@titon-network/themis-sdk": "0.1.0-alpha.0",
         "@noble/curves": "^1.6.0",
         "pino": "^9.5.0",
         "pino-pretty": "^11.3.0",

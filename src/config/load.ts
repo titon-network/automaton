@@ -115,5 +115,21 @@ export function applyEnvOverlay(config: Config): Config {
         };
     }
 
+    const themisFactoryAddr = process.env.AUTOMATON_THEMIS_FACTORY_ADDRESS;
+    const themisAtlasAddr = process.env.AUTOMATON_THEMIS_ATLAS_ADDRESS;
+    const themisForgetonAddr = process.env.AUTOMATON_THEMIS_FORGETON_ADDRESS;
+    if (
+        themisFactoryAddr !== undefined ||
+        themisAtlasAddr !== undefined ||
+        themisForgetonAddr !== undefined
+    ) {
+        result.themis = {
+            ...(result.themis ?? {}),
+            ...(themisFactoryAddr !== undefined ? { factoryAddress: themisFactoryAddr } : {}),
+            ...(themisAtlasAddr !== undefined ? { atlasAddress: themisAtlasAddr } : {}),
+            ...(themisForgetonAddr !== undefined ? { forgetonAddress: themisForgetonAddr } : {}),
+        };
+    }
+
     return result;
 }

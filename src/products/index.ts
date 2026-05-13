@@ -17,23 +17,25 @@ import type { Config } from '../config/schema';
 import type { ProductModule } from './types';
 import { kronos } from './kronos';
 import { fortuna } from './fortuna';
+import { themis } from './themis';
 
 // Re-export the canonical types so `import { ProductModule } from '../products'`
 // works without reaching into ./types directly.
 export * from './types';
-export { kronos, fortuna };
+export { kronos, fortuna, themis };
 
 /**
  * Every product the daemon knows about. ORDER MATTERS for the
  * `explainExitCode` priority walk: products listed earlier win on
  * overlapping code ranges. Kronos is registered first because it owns
- * the largest custom-code table among today's products; fortuna second.
+ * the largest custom-code table among today's products; fortuna second;
+ * themis third.
  *
  * ForgeTON pool is the only true baseline (every operator stakes there
  * regardless of which products they enable); its checks live directly
  * in src/chain/{deployment,runtime,schema-check}.ts.
  */
-export const PRODUCTS: readonly ProductModule[] = [kronos, fortuna];
+export const PRODUCTS: readonly ProductModule[] = [kronos, fortuna, themis];
 
 /**
  * Filter `PRODUCTS` to the ones the operator opted into via their config.

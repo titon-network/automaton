@@ -238,6 +238,38 @@ Either a peer operator won the race (winner-takes-all in t-of-n) OR the consumer
 
 **Fix:** none. If you see this for every request and never `fortuna: fulfill submitted`, the operator may not be in the active group — verify with `atlas.getOperatorShare(0, <wallet>)` returning `{ hasShare: true, isActive: true }`.
 
+### `themis: skip reveal { reason: 'not-mirrored' }`
+
+The configured chamber's `getOperator(self)` returned null — the factory hasn't fanned `AutomatonSync` out to the chamber for this operator yet.
+
+**Cause:** ForgeTON's `AutomatonSync` was published, the factory cached it, but factory→chamber fan-out is bounded by `cfg.maxFanoutPerSync` per inbound. With many chambers, each operator change ripples through over multiple cycles.
+
+**Fix:** wait for the next factory cycle (chamber count / fanoutCap ticks), OR verify the factory itself is healthy — it should be admitted as a ForgeTON consumer. If `pool.getConsumer(<factory-addr>) === null`, the factory itself isn't admitted; fix that first.
+
+### `themis: skip reveal { reason: 'no-group-key' }`
+
+The chamber hasn't received `GroupKeySync` from the factory yet — its cached `GroupKeyEntry` has `entryVersion=0`.
+
+**Fix:** anyone can call the factory's permissionless `RebroadcastGroupKey` (audit fix INT-1) to force fan-out of the cached `groupPk` to the next batch of chambers. Otherwise wait for the natural rotation cadence.
+
+### `themis: skip reveal { reason: 'commit-still-open' }`
+
+Operator-side timing — `now < commitEta`. Bidders are still allowed to submit ciphertexts.
+
+**Fix:** wait. The worker re-evaluates every poll cycle.
+
+### `themis: skip reveal { reason: 'reveal-deadline-passed' }`
+
+Operator missed the reveal window (`now >= revealEta`). Anyone can now call `AdvanceRound` to refund bidders.
+
+**Fix:** investigate why the daemon was off through `commitEta..revealEta`. Common causes: lockfile contention, schema-mismatch refusing to start, RPC outage exceeding the drain window. The next round opens automatically when `AdvanceRound` lands.
+
+### `themis: round no longer current (settled by someone else)`
+
+The pre-submit live freshness check (`getCurrentRound`) reports a different `roundId` than the cached one — a peer operator (in v1.1+ multi-op) submitted the reveal first OR `AdvanceRound` rolled the round over after a missed deadline.
+
+**Fix:** informational. In solo-mode v1 you're the only operator — this only fires after a missed reveal that triggered `AdvanceRound`.
+
 ### Multi-op: `fortuna: signed + broadcast our partial peers=N ok=0`
 
 Daemon signed locally + tried to POST partials to all peers; **zero** peers received it. Requests will time out and consumers will reclaim.

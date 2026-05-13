@@ -120,12 +120,13 @@ describe('runChecks', () => {
         const names = results.map((r) => r.name);
 
         // Install layer always fires; ordered as defined in buildInstallChecks.
-        expect(names.slice(0, 6)).toEqual([
+        expect(names.slice(0, 7)).toEqual([
             'node >= 22',
             '@titon-network/forgeton-sdk resolves',
             '@titon-network/kronos-sdk resolves',
             '@titon-network/atlas-sdk resolves',
             '@titon-network/fortuna-sdk resolves',
+            '@titon-network/themis-sdk resolves',
             'package version readable',
         ]);
         // node + pkg version checks don't depend on dynamic import; they pass
@@ -139,6 +140,7 @@ describe('runChecks', () => {
             '@titon-network/kronos-sdk resolves',
             '@titon-network/atlas-sdk resolves',
             '@titon-network/fortuna-sdk resolves',
+            '@titon-network/themis-sdk resolves',
         ]) {
             const c = findCheck(results, n);
             expect(['ok', 'fail']).toContain(c.status);

@@ -9,4 +9,6 @@ Fully-local simulation. Boots `@ton/sandbox` in-process, deploys the full Titon 
 
 The playground intentionally bypasses `ProductModule.bootstrapWorker` (production path resolves `KRONOS_TESTNET` / `FORTUNA_TESTNET` + real wallet sender, neither of which exists in sandbox) and hand-builds `KronosWorker` + `FortunaWorker` against the harness. Both workers expose explicit injection points (`submitExecute?` / `submitFulfill?` / `sender?`) that swap the I/O boundary while leaving pure orchestration logic intact. See the architecture note at the top of `demo.ts`.
 
+> Themis is **not yet** in the playground — adding it would mean deploying the Themis factory, spawning a chamber per consumer, registering a sealed-AMM-style reference consumer, and driving a `SubmitCiphertext` → fast-forward → `RevealRound` cycle. Tracked as part of themis PLAN Phase 4 (the `SealedAMMConsumer.spec.ts` sandbox harness will likely become the playground integration). The `ThemisWorker` ships with the same `submitReveal?` / `sender?` injection points so it can drop in cleanly.
+
 See [`../../CLAUDE.md`](../../CLAUDE.md) §AI navigator → "Change the playground / local sandbox demo". Drift guard: [`../../tests/cli-playground.spec.ts`](../../tests/cli-playground.spec.ts) (4 tests — Kronos-only, full-stack, JSON, abort).

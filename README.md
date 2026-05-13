@@ -8,9 +8,9 @@
 
 The off-chain operator node for the [Titon](https://github.com/titon-network) protocol suite on TON.
 
-Stake once with [ForgeTON](https://github.com/titon-network/forgeton) (shared-security staking pool) and earn from every admitted consumer product — Kronos automation (always-on baseline) and Fortuna VRF (opt-in via `products.fortuna`); future products (oracles, functions) plug into the same `ProductModule` registry.
+Stake once with [ForgeTON](https://github.com/titon-network/forgeton) (shared-security staking pool) and earn from every admitted consumer product — Kronos automation (always-on baseline), Fortuna VRF (opt-in via `products.fortuna`), and Themis sealed-bid threshold-decryption (opt-in via `products.themis`); future products (oracles, functions) plug into the same `ProductModule` registry.
 
-> 🛡️ **Built on TSA-audited contracts — zero findings each.** Every protocol the automaton talks to has cleared symbolic-execution audit: [ForgeTON](https://github.com/titon-network/forgeton/blob/main/tsa-analysis/AUDIT_REPORT.md), [Atlas](https://github.com/titon-network/atlas/blob/main/tsa-analysis/AUDIT_REPORT.md), [Kronos](https://github.com/titon-network/kronos/blob/main/tsa-analysis/AUDIT-REPORT.md), [Fortuna](https://github.com/titon-network/fortuna/blob/main/AUDIT_REPORT.md). Pinned SDKs (mainnet): `forgeton-sdk@0.9.1` · `atlas-sdk@0.3.0` · `kronos-sdk@0.8.4` · `fortuna-sdk@0.4.0`.
+> 🛡️ **Built on TSA-audited contracts — zero findings each.** Every protocol the automaton talks to has cleared symbolic-execution audit: [ForgeTON](https://github.com/titon-network/forgeton/blob/main/tsa-analysis/AUDIT_REPORT.md), [Atlas](https://github.com/titon-network/atlas/blob/main/tsa-analysis/AUDIT_REPORT.md), [Kronos](https://github.com/titon-network/kronos/blob/main/tsa-analysis/AUDIT-REPORT.md), [Fortuna](https://github.com/titon-network/fortuna/blob/main/AUDIT_REPORT.md), [Themis](https://github.com/titon-network/themis/blob/main/AUDIT.md). Pinned SDKs (mainnet): `forgeton-sdk@0.9.1` · `atlas-sdk@0.3.0` · `kronos-sdk@0.8.4` · `fortuna-sdk@0.4.0` · `themis-sdk@0.1.0-alpha.0`.
 
 ---
 
@@ -171,7 +171,7 @@ The daemon prints one JSON line per event to stdout and exposes Prometheus metri
 | `automaton stake request-unstake` | Start the cooldown (default 24 h on ForgeTON). Stake stays locked until `withdraw`. |
 | `automaton stake cancel-unstake` | Abort a pending unstake and stay active. |
 | `automaton stake withdraw` | Finalize after the cooldown — returns the full stake to the wallet. |
-| `automaton bls keygen [--force]` | Generate a fresh BLS12-381 secret for Fortuna VRF, encrypt to `~/.titon/automaton/bls.enc` under the same password as the wallet (v1 same-password model). `--force` overwrites without confirmation. Required only when `products.fortuna` is enabled. |
+| `automaton bls keygen [--force]` | Generate a fresh BLS12-381 secret for Fortuna VRF + Themis reveals, encrypt to `~/.titon/automaton/bls.enc` under the same password as the wallet (v1 same-password model). `--force` overwrites without confirmation. Required when `products.fortuna` OR `products.themis` is enabled (one keystore covers both — the Atlas group secret signs both fulfillments and reveals). |
 | `automaton bls pubkey` | Print the 48-byte G1 pkShare from `bls.enc`. No password required (plaintext header). |
 | `automaton bls register [--group-id <id>]` | Submit `RegisterBlsShare` to Atlas. Pre-checks ForgeTON-active state. Reverts with `OperatorNotFound (120)` if Atlas isn't yet admitted as a ForgeTON consumer — see [docs/troubleshooting.md](docs/troubleshooting.md). |
 | `automaton bls deregister [--group-id <id>]` | Submit `DeregisterBlsShare` to Atlas. Removes the pkShare from the active group. |
@@ -203,9 +203,10 @@ Config lives at `~/.titon/automaton/config.json` (or `$AUTOMATON_CONFIG`, or und
 | `maxGasPerExecute` | TON | `'0.5'` | Per-execute gas ceiling. |
 | `minFreeBalance` | TON | `'2.0'` | `automaton doctor` warns below this. |
 | `logLevel` | `trace` \| `debug` \| `info` \| `warn` \| `error` | `info` | Pino log level. `--log-level` flag overrides. |
-| `products.kronos` / `products.fortuna` | bool | `true` / `false` | Enable per-consumer workers. Flipping `products.fortuna: true` requires a `bls.enc` keystore on disk (`automaton bls keygen`) and the BLS share to be registered at Atlas (`automaton bls register` after `stake register`). |
+| `products.kronos` / `products.fortuna` / `products.themis` | bool | `true` / `false` / `false` | Enable per-consumer workers. Flipping `products.fortuna: true` requires a `bls.enc` keystore on disk (`automaton bls keygen`) and the BLS share to be registered at Atlas (`automaton bls register` after `stake register`). Flipping `products.themis: true` requires the same `bls.enc` plus a `themis.chambers: ["EQ…", …]` list naming each chamber the operator opts into serving (auto-discovery from the factory's `ChamberDeployed` events is a v1.1 follow-up). |
+| `themis.{factoryAddress, atlasAddress, forgetonAddress, chambers}` | optional | (resolved from SDK) | Pre-launch / sovereign-deployment overrides for the Themis factory + the chambers this operator serves. Empty `chambers` makes the worker a no-op even with `products.themis: true`. Env overrides: `AUTOMATON_THEMIS_FACTORY_ADDRESS`, `AUTOMATON_THEMIS_ATLAS_ADDRESS`, `AUTOMATON_THEMIS_FORGETON_ADDRESS`. |
 
-Env-var overrides for the common toggles: `AUTOMATON_NETWORK`, `AUTOMATON_METRICS_PORT`, `AUTOMATON_LOG_LEVEL`, `AUTOMATON_PASSWORD`, `TITON_HOME`, `AUTOMATON_CONFIG`.
+Env-var overrides for the common toggles: `AUTOMATON_NETWORK`, `AUTOMATON_METRICS_PORT`, `AUTOMATON_LOG_LEVEL`, `AUTOMATON_PASSWORD`, `TITON_HOME`, `AUTOMATON_CONFIG`, `AUTOMATON_ATLAS_ADDRESS` / `AUTOMATON_FORTUNA_ADDRESS`, `AUTOMATON_THEMIS_FACTORY_ADDRESS` / `AUTOMATON_THEMIS_ATLAS_ADDRESS` / `AUTOMATON_THEMIS_FORGETON_ADDRESS`.
 
 ---
 

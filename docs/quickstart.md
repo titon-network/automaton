@@ -218,6 +218,56 @@ In the daemon log you'll start seeing `fortuna: operator mirror updated for self
 
 ---
 
+## 9. Optional — enable Themis (sealed-bid threshold-decryption)
+
+Same daemon, same stake, same `bls.enc`, third product. Themis lets consumer protocols accept ciphertext bids during a commit window, then operators threshold-decrypt + reveal them in a batch — unlocks MEV-resistant DEX swaps, sealed-bid auctions, confidential governance. The operator earns `revealerReward` per chamber per round.
+
+**Prerequisite chain:** the same `bls.enc` you generated for Fortuna IS the Themis signing key (Atlas group secret signs both `FulfillRandomness` and `RevealRound`). The Themis factory itself must be admitted as a ForgeTON consumer + Atlas verifier — that's a one-time owner-driven step, not operator-side.
+
+```bash
+# Stop the daemon (same reason as the Fortuna flip — clean restart).
+
+# 1. List the chambers you want to serve. The Themis factory deploys
+#    chambers per consumer protocol (sealed AMM, auction house, etc.) —
+#    each has its own address. v1 requires explicit opt-in per chamber;
+#    auto-discovery from the factory's ChamberDeployed events lands in v1.1.
+#    Get the chamber list from the factory's `EvtChamberDeployed` events
+#    OR from the consumer protocol's docs.
+
+# 2. Edit config.json — flip products.themis: true and add the chambers list:
+automaton config edit
+#   change "products": { "kronos": true, "fortuna": true, "themis": false }
+#   to     "products": { "kronos": true, "fortuna": true, "themis": true }
+#   and add:
+#     "themis": {
+#         "chambers": [
+#             "EQ…<chamber-1-addr>",
+#             "EQ…<chamber-2-addr>"
+#         ]
+#     }
+#   Pre-launch / sovereign deployments may also need:
+#     "themis": { "factoryAddress": "EQ…", "atlasAddress": "EQ…", "chambers": [...] }
+
+# 3. Start the daemon. ThemisWorker initialises one in-memory state per chamber
+#    and seeds via getOperator + getCurrentRound + getGroupKey on the first tick.
+automaton run    # or `sudo systemctl start automaton` / `docker start automaton`
+```
+
+Verify Themis is live:
+
+```bash
+automaton status --format json | jq '.products.themis'
+# → object with atlas / factory / chamber:* keys when wired
+curl -s http://127.0.0.1:9090/metrics | grep themis_
+# → automaton_themis_chambers + automaton_themis_pending_reveals gauges
+```
+
+In the daemon log you'll see `themis worker initialised chamberCount=N`, `themis: operator-mirror updated for self at chamber EQ…` (after factory fan-out), and once a round closes: `themis: submitting RevealRound roundId=N bidCount=M groupEpoch=N`.
+
+If `automaton_themis_chambers > 0` but `themis: skip reveal { reason: 'not-mirrored' }` keeps logging, the factory's `AutomatonSync` fan-out hasn't reached your operator's chamber yet — bounded by `cfg.maxFanoutPerSync`, may take a few cycles. See [`docs/troubleshooting.md`](troubleshooting.md#themis-skip-reveal--reason-not-mirrored-) for the full per-skip-reason reference.
+
+---
+
 ## What next
 
 - [docs/ops.md](ops.md) — systemd + Docker deployment, key rotation, upgrades, backup.

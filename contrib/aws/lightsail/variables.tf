@@ -27,9 +27,14 @@ variable "keystore_password" {
 variable "bls_keystore_file" {
   description = <<EOT
     Path on the local machine to `bls.enc` (BLS12-381 secret keystore for
-    Fortuna VRF). When set, the module enables `products.fortuna` in the
-    daemon config and embeds the keystore in user-data alongside `wallet.enc`.
-    When `null` (the default), the daemon runs Kronos-only — same as before.
+    Fortuna VRF and/or Themis reveals — one keystore covers both).
+    When set, the module enables `products.fortuna` in the daemon config
+    and embeds the keystore in user-data alongside `wallet.enc`. When
+    `null` (the default), the daemon runs Kronos-only — same as before.
+
+    Setting `themis_chambers` (below) ALSO requires `bls_keystore_file`
+    — the same Atlas group secret signs both Fortuna fulfillments and
+    Themis reveals.
 
     The BLS keystore today shares the wallet password (v1 same-password
     model — see `CLAUDE.md` §"BLS identity is decoupled"). Generate it
@@ -41,10 +46,42 @@ variable "bls_keystore_file" {
     bootstrap): after `terraform apply` and once the wallet is active in
     ForgeTON, run `sudo automaton bls register` on the instance. Until
     then, the FortunaWorker initialises but stays idle (no group
-    membership at Atlas → no fulfillments routed).
+    membership at Atlas → no fulfillments routed). Themis uses the
+    SAME pkShare registration — `bls register` once covers both products.
   EOT
   type        = string
   default     = null
+}
+
+variable "themis_chambers" {
+  description = <<EOT
+    List of Themis chamber addresses this operator should serve, in
+    UQ-form (e.g. `["EQ…", "EQ…"]`). When non-empty, the daemon enables
+    `products.themis` and writes the list under `themis.chambers` in
+    config.json — the ThemisWorker tracks each chamber's round + bid
+    state, threshold-decrypts cached bids when the commit window closes,
+    and submits `RevealRound` before the reveal deadline.
+
+    Themis additionally requires `bls_keystore_file` (same key as
+    Fortuna — Atlas group secret signs both `FulfillRandomness` and
+    `RevealRound`). Empty list (default `[]`) leaves themis disabled
+    AND zero overhead — the worker only boots when at least one chamber
+    is configured.
+
+    Auto-discovery from the factory's `EvtChamberDeployed` events is a
+    v1.1 follow-up; v1 keeps the surface explicit so the operator
+    knows which chambers they're earning fees + bearing reveal
+    liability for. To find chamber addresses: query the Themis factory's
+    events or check the consumer protocol's docs.
+
+    Pre-launch / sovereign-deployment overrides for the factory itself
+    aren't exposed here yet — the canary uses the SDK-pinned
+    `THEMIS_TESTNET.factory`. Add `themis_factory_address` /
+    `themis_atlas_address` knobs when sovereign deployments need the
+    Lightsail module too.
+  EOT
+  type        = list(string)
+  default     = []
 }
 
 variable "network" {

@@ -77,6 +77,27 @@ if [ -n "$RPC_API_KEY" ]; then
 else
     ENDPOINT_JSON=$(jq -n --arg url "$RPC_URL" '{url: $url}')
 fi
+
+# Themis chamber list. Terraform CSV-encodes a list<string> here (lists
+# don't survive heredoc interpolation cleanly); split on `,` + JSON-array-
+# encode for config.json. Empty CSV → empty array → enable_themis is
+# false anyway (the module gates enable_themis on length > 0).
+THEMIS_CHAMBERS_CSV='${themis_chambers_csv}'
+if [ -n "$THEMIS_CHAMBERS_CSV" ]; then
+    THEMIS_CHAMBERS_JSON=$(echo "$THEMIS_CHAMBERS_CSV" | tr ',' '\n' | jq -R . | jq -s -c .)
+else
+    THEMIS_CHAMBERS_JSON='[]'
+fi
+
+# Inject the themis config block ONLY when enabled — keeps disabled
+# configs unchanged from the pre-themis shape, so Fortuna-only / Kronos-only
+# canaries don't drift on schema diffs after upgrading the module.
+if ${enable_themis}; then
+    THEMIS_BLOCK=", \"themis\": { \"chambers\": $THEMIS_CHAMBERS_JSON }"
+else
+    THEMIS_BLOCK=""
+fi
+
 cat > "$STATE_DIR/automaton/config.json" <<EOF
 {
   "configVersion": 1,
@@ -90,7 +111,7 @@ cat > "$STATE_DIR/automaton/config.json" <<EOF
   "maxGasPerExecute": "0.5",
   "minFreeBalance": "2.0",
   "logLevel": "info",
-  "products": { "kronos": true, "fortuna": ${enable_fortuna} }
+  "products": { "kronos": true, "fortuna": ${enable_fortuna}, "themis": ${enable_themis} }$THEMIS_BLOCK
 }
 EOF
 chmod 600 "$STATE_DIR/automaton/config.json"

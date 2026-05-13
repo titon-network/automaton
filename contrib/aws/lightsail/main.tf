@@ -42,6 +42,15 @@ locals {
   enable_fortuna   = var.bls_keystore_file != null
   bls_keystore_b64 = var.bls_keystore_file != null ? base64encode(file(var.bls_keystore_file)) : ""
 
+  # Themis is enabled iff the operator listed at least one chamber to
+  # serve AND a BLS keystore is present (Themis reuses Fortuna's key —
+  # the Atlas group secret signs both products). Chambers are joined
+  # into a comma-separated string for templatefile() (Terraform 1.x
+  # can't pass a list cleanly into a heredoc; the bootstrap script
+  # splits on `,` to rebuild the JSON array).
+  enable_themis       = length(var.themis_chambers) > 0 && var.bls_keystore_file != null
+  themis_chambers_csv = join(",", var.themis_chambers)
+
   # RPC endpoint. Default = the network's public toncenter URL (free tier,
   # rate-limited ~1 req/s) when the operator didn't pick one. The variable
   # paths through user-data into config.endpoints[0] verbatim.
@@ -76,6 +85,8 @@ resource "aws_lightsail_instance" "this" {
     rpc_api_key           = local.rpc_api_key_or_empty
     enable_fortuna        = local.enable_fortuna
     bls_keystore_b64      = local.bls_keystore_b64
+    enable_themis         = local.enable_themis
+    themis_chambers_csv   = local.themis_chambers_csv
   })
 
   tags = local.base_tags

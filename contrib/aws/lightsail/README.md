@@ -219,6 +219,67 @@ In the daemon log (`journalctl -u titon-automaton -f`):
 
 ---
 
+## Enabling Themis
+
+Themis (sealed-bid threshold-decryption) is opt-in. Themis reuses
+Fortuna's BLS keystore + Atlas group registration — one `bls.enc`,
+one `bls register`, two products.
+
+### Step 1 — Pass a chamber list to the module
+
+```hcl
+module "automaton" {
+  source = "github.com/titon-network/automaton//contrib/aws/lightsail?ref=main"
+
+  network              = "testnet"
+  bundle_id            = "micro_3_0"   # ≥ 1 GB RAM with Fortuna or Themis on
+  wallet_keystore_file = "${pathexpand("~")}/.titon/automaton/wallet.enc"
+  bls_keystore_file    = "${pathexpand("~")}/.titon/automaton/bls.enc"
+  keystore_password    = var.keystore_password
+
+  themis_chambers = [
+    "EQ…<chamber-1-addr>",
+    "EQ…<chamber-2-addr>",
+  ]
+}
+```
+
+`terraform apply`. The bootstrap embeds the chamber list into
+`config.themis.chambers`, flips `config.products.themis: true`,
+and the ThemisWorker initialises one in-memory state per chamber.
+With an empty list (`themis_chambers = []`, the default), Themis
+stays disabled — zero overhead.
+
+> 🔍 **Where do chamber addresses come from?** v1 requires explicit
+> opt-in per chamber; auto-discovery from the factory's
+> `EvtChamberDeployed` events is a v1.1 follow-up. To find chambers
+> deployed against the canonical Themis factory, query its events
+> via `tonscan` (look for opcode `0xB0` external-out logs) or check
+> the consumer protocol's docs for the chamber it spawned.
+
+### Step 2 — Verifying Themis is live
+
+```bash
+ssh ubuntu@$(terraform output -raw public_ip) sudo automaton status --format json | jq '.products.themis'
+# → object with atlas / factory / chamber:* keys when wired
+ssh ubuntu@$(terraform output -raw public_ip) curl -s http://127.0.0.1:9090/metrics | grep themis_
+# → automaton_themis_chambers + automaton_themis_pending_reveals gauges
+```
+
+In the daemon log:
+- `themis worker initialised chamberCount=N` — bootstrap configured N chambers
+- `themis: operator-mirror updated for self at chamber EQ…` — factory fan-out reached the chamber
+- `themis: round started roundId=N commitEta=… revealEta=…` — chamber opened a new round
+- Once commit window closes: `themis: submitting RevealRound roundId=N bidCount=M`
+
+If you see persistent `themis: skip reveal { reason: 'not-mirrored' }`,
+the factory's `AutomatonSync` fan-out hasn't reached the chamber yet
+— bounded by `cfg.maxFanoutPerSync`, may take a few cycles. See
+[`docs/troubleshooting.md`](../../../docs/troubleshooting.md#themis-skip-reveal--reason-not-mirrored-)
+for the full per-skip-reason reference.
+
+---
+
 ## Sizing guide
 
 | Bundle | RAM | vCPU | Disk | Cost | When to use |

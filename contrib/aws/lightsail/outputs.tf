@@ -22,11 +22,23 @@ output "fortuna_register_command" {
   description = <<EOT
     When `bls_keystore_file` is set, registering the BLS pkShare at Atlas
     is operator-driven and runs AFTER the wallet is active in ForgeTON.
-    Empty string when Fortuna is disabled.
+    Empty string when Fortuna (and therefore Themis) is disabled.
+    The same `bls register` covers both Fortuna and Themis — one keystore,
+    one Atlas group registration.
   EOT
   value = (
     var.bls_keystore_file != null
     ? "ssh ubuntu@${aws_lightsail_static_ip.this.ip_address} sudo automaton bls register"
     : ""
   )
+}
+
+output "themis_chambers" {
+  description = <<EOT
+    Echoes the configured `themis_chambers` list back so callers can
+    confirm what the deployed config wrote. Empty list = themis disabled
+    (no chambers to serve). To find chamber addresses on testnet, query
+    the Themis factory's `EvtChamberDeployed` events.
+  EOT
+  value       = var.themis_chambers
 }

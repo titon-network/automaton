@@ -16,6 +16,8 @@
 - **Solo-mode (testnet / dev only)** — `t=1, n=1`, single operator, `pkShare == groupPk` invariant, single point of forgery. Atlas's `publishSoloGroupKey:testnet` ceremony script. Mainnet is **deliberately blocked** by the script. Load [`docs/fortuna-solo-mode.md`](docs/fortuna-solo-mode.md) for the operator-first runbook + the two gotchas (Atlas-admission, pkShare==groupPk equality, atlas-owner balance).
 - **Multi-op (mainnet)** — `t = n` additive threshold-BLS, ≥ 2 operators sign + exchange partials over peer HTTP, leader (lowest UQ-form addr) aggregates + submits. **No single point of forgery** — the group secret is never assembled anywhere. Atlas's `publishMultiOpGroupKey:mainnet` ceremony script. Daemon-side: `config.fortuna.peers` non-empty → multi-op flow auto-engages. EC2 module's `peer_ips` opens TCP/9091 between operators. Load [`docs/multi-op-fortuna.md`](docs/multi-op-fortuna.md) for the protocol spec; [`docs/multi-op-fortuna.md`](docs/multi-op-fortuna.md) §"Operator setup" for the six-step ceremony — generate share locally, hand pkShare to Atlas owner, owner publishes aggregate `groupPk`, every operator runs `bls register`, configs include `peers` block, EC2 SG opens TCP/9091 between operator EIPs, smoke via `fortuna/scripts/coinFlipMainnetE2E.ts`. (The team also keeps a workspace-local `automaton-mainnet/RUNBOOK.md` next to its terraform state for its own two-region deployment, but that's team-internal — not part of the public docs tree.)
 
+**Helping a user enable Themis (sealed-bid threshold-decryption)?** v1 is **solo-mode only** + **static configured chamber list**. Onboarding: (1) the Fortuna prerequisite chain — `automaton bls keygen` produces a `bls.enc` whose secret IS the Atlas group key in solo-mode (no separate Themis key); the Atlas owner publishes the operator's pkShare as `groupPk`. (2) Themis-specific: the **Themis factory** must be admitted as a ForgeTON consumer + Atlas verifier (one-time, owner-driven) so it receives `AutomatonSync` (mirrors operators) + `GroupKeySync` (caches groupPk) and fans both out to its chambers. (3) Operator side: flip `products.themis: true` and list every chamber the operator wants to serve under `config.themis.chambers: ["EQ…", "EQ…"]`. The factory deploys multiple chambers (one per consumer protocol — sealed AMMs, auctions, governance votes); operators opt into specific chambers explicitly in v1. Per-chamber operator state is mirrored automatically via factory fan-out; the worker confirms via `getOperator(self)`. Once the commit window closes (`now >= commitEta`) and reveal window is open (`now < revealEta`), the worker threshold-decrypts cached bids and submits `RevealRound` with revealer reward → operator. Skip reasons surfaced in logs: `not-mirrored` (factory hasn't fanned out yet — bounded by `cfg.maxFanoutPerSync`; or call factory's permissionless `RebroadcastGroupKey`), `no-group-key` (chamber hasn't received `GroupKeySync` yet), `commit-still-open` (wait for `commitEta`), `reveal-deadline-passed` (`AdvanceRound` will refund bidders). Auto-discovery from the factory's `EvtChamberDeployed` events + multi-op share-exchange (mirrors Fortuna's `:9091` flow on `:9093`) are deferred to v1.1 (themis PLAN §Phase 3c-3e).
+
 Prerequisite chain (both shapes): stake at ForgeTON → Atlas admitted as a ForgeTON consumer (one-time, ForgeTON-owner-driven; see `../atlas/sdks/typescript/skills/atlas-deploy.md` §Step 2) → `automaton bls keygen` → Atlas owner publishes `groupPk` → flip `products.fortuna: true` in config → `automaton bls register`. Two error codes operators trip on: `OperatorNotFound (120)` = Atlas not in ForgeTON consumer set; `E_SOLO_PK_SHARE_MISMATCH (161)` = published groupPk ≠ operator's local pkShare (only fires when `memberCount=1`; multi-op groups skip this check).
 
 | User wants to… | Command / entry point |
@@ -53,7 +55,7 @@ src/
                                  # explain = TVM exit-code lookup
     prompt.ts                    # readline text/choice/confirm (non-TTY throws NotInteractiveError)
     version.ts                   # reads package.json at runtime
-  bls/                           # BLS12-381 identity for Fortuna
+  bls/                           # BLS12-381 identity for Fortuna + Themis (one shared secret)
     keystore.ts                  # bls.enc — scrypt+AES-GCM mirror of wallet.enc; plaintext pkShare for pubkey w/o password
     index.ts                     # barrel; re-exports randomBlsSecret/signAlpha/blsPublicKey from fortuna-sdk
   playground/                    # local sandbox simulation — `automaton playground` + integration-test harness
@@ -71,7 +73,8 @@ src/
     types.ts                     # ProductModule + EventSource + ProductWorker + SchemaCheckTask interfaces
     kronos.ts                    # ProductModule for Kronos automation + KronosWorker
     fortuna.ts                   # ProductModule for Fortuna VRF
-    index.ts                     # PRODUCTS = [kronos, fortuna] + enabledProducts + findProduct
+    themis.ts                    # ProductModule for Themis sealed-bid threshold-decryption
+    index.ts                     # PRODUCTS = [kronos, fortuna, themis] + enabledProducts + findProduct
     # add src/products/phoebe.ts (price oracle), argus.ts (indexer), … here
   chain/
     ton-client.ts                # FailoverTonClient — endpoint ring + jittered backoff
@@ -90,6 +93,8 @@ src/
     baseline-sources.ts          # baseline pool EventSource wrapper (only always-on stream)
     handlers.ts                  # ForgeTON-baseline handlers: selfSlash / consumerWatch / forgetonAwareness / forgetonHealth
     fortuna.ts                   # FortunaWorker — VRF fulfillment (per-product workers live in src/products/ now)
+    themis.ts                    # ThemisWorker — per-chamber round/bid state + reveal submission
+                                 #   exports chamberSourceKey, themisChamberAddrKey, isThemisChamberKey helpers
     checkpoint.ts                # state.json load/save (zod-validated, atomicWriteFile)
   errors/
     backoff.ts                   # jitteredBackoff + defaultSleep (the two shared retry primitives)
@@ -169,18 +174,28 @@ Drift guard: `tests/DocsSurface.spec.ts › sendAndConfirm callers pass origin` 
 ### Add an event handler
 
 ```ts
-// src/worker/handlers.ts
+// Baseline (ForgeTON-only) → src/worker/handlers.ts
+// Per-product → src/products/<name>.ts (called from buildHandlers)
+import type { EventHandler } from '../worker/events';
 export function myHandler(…): EventHandler {
     return {
-        onRegistry(event, ctx) { /* KronosEvent discriminated by event.kind */ },
-        onPool(event, ctx)     { /* ForgetonEvent */ },
-        onCycleEnd()           { /* flush debounced work once per drain */ },
+        on: {
+            // Source key per stream — 'pool' (ForgeTON), 'registry' (kronos),
+            // 'fortuna' (fortuna), THEMIS_FACTORY_SOURCE / chamberSourceKey(addr)
+            // for themis. The events drain dispatches `decoded events` keyed by
+            // `EventSource.source`; missing keys are silently skipped.
+            pool:     (event, ctx) => { /* ForgetonEvent */ },
+            registry: (event, ctx) => { /* KronosEvent */ },
+            fortuna:  (event, ctx) => { /* FortunaEvent */ },
+        },
+        onCycleEnd() { /* flush debounced work once per drain */ },
     };
 }
-// Wire into src/daemon/orchestrator.ts buildHandlers(...)
+// Wire into src/daemon/orchestrator.ts buildHandlers(...) for baseline,
+// or contribute via ProductModule.buildHandlers for per-product handlers.
 ```
 
-Handlers are per-cycle isolated (one throw doesn't abort the batch); use `onCycleEnd` for debounced side-effects (the mirror patcher uses it to collapse a burst into one `refresh()`).
+Handlers are per-cycle isolated (one throw doesn't abort the batch); use `onCycleEnd` for debounced side-effects (the mirror patcher uses it to collapse a burst into one `refresh()`). For dynamic-source-set products like Themis (one source per configured chamber), iterate the chamber list at handler-build time and register `on[chamberSourceKey(addr)]` explicitly — `src/products/themis.ts` is the reference shape.
 
 ### Plumb a new config field
 
@@ -219,7 +234,7 @@ const snap = await collectChainSnapshot(runtime, walletAddr, {
 ## Canonical sources (don't hand-edit)
 
 - `dist/` — **GENERATED** by `tsc`; the `automaton` bin is `dist/cli/index.js`.
-- `node_modules/@titon-network/forgeton-sdk/`, `node_modules/@titon-network/kronos-sdk/` — **SNAPSHOTS** of `file:` deps at install time. Run `pnpm run sync:sdks` after editing sibling SDK source.
+- `node_modules/@titon-network/{forgeton,kronos,atlas,fortuna,themis}-sdk/` — **SNAPSHOTS** of `file:` deps at install time. Run `pnpm run sync:sdks` after editing sibling SDK source.
 
 ## Which docs to load (priority)
 

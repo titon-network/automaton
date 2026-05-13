@@ -130,6 +130,11 @@ export const ConfigSchema = z.object({
     products: z.object({
         kronos: z.boolean(),
         fortuna: z.boolean(),
+        // `.default(false)` keeps v1 config files (which predate themis)
+        // round-tripping cleanly through the schema — they parse with
+        // `themis: false` filled in. New configs from `automaton init`
+        // (or `defaultConfig`) write the explicit field.
+        themis: z.boolean().default(false),
     }),
     // Optional per-product deployment overrides. Required when the SDK's
     // own deployment constant is null (pre-testnet) AND the corresponding
@@ -171,6 +176,28 @@ export const ConfigSchema = z.object({
             leaderGraceSec: z.number().int().min(5).max(300).optional(),
         })
         .optional(),
+    // Themis sealed-bid threshold-decryption config. Required when
+    // products.themis is true.
+    //
+    //   atlasAddress, forgetonAddress, factoryAddress — pre-launch overrides;
+    //     the SDK's THEMIS_TESTNET / THEMIS_MAINNET fall back when null.
+    //   chambers — list of chamber addresses this operator serves. Themis
+    //     is parent-child: one factory deploys many chambers (one per
+    //     consumer protocol). The operator opts into specific chambers
+    //     here. Auto-discovery (via factory's ChamberDeployed events) is
+    //     a v1.1 extension; v1 keeps the surface explicit so an operator
+    //     knows exactly which chambers they're earning fees + bearing
+    //     reveal liability for.
+    themis: z
+        .object({
+            atlasAddress: z.string().optional(),
+            forgetonAddress: z.string().optional(),
+            factoryAddress: z.string().optional(),
+            chambers: z
+                .array(z.string())
+                .optional(),
+        })
+        .optional(),
 });
 
 export type Config = z.infer<typeof ConfigSchema>;
@@ -197,6 +224,6 @@ export function defaultConfig(network: Network): Config {
         maxGasPerExecute: '0.5',
         minFreeBalance: '2.0',
         logLevel: 'info',
-        products: { kronos: true, fortuna: false },
+        products: { kronos: true, fortuna: false, themis: false },
     };
 }

@@ -129,6 +129,8 @@ The daemon exposes Prometheus metrics at `http://<metricsHost>:<metricsPort>/met
 | `automaton_pool_active_count` | gauge | Total active automatons in the registry mirror — affects assignment rotation. |
 | `automaton_registry_job_count` · `automaton_registry_accumulated_fees_ton` · `automaton_registry_paused` | gauge | Registry health surface — total job count (rough load), protocol-fee balance, pause flag. |
 | `automaton_fortuna_pending_requests` | gauge | Number of Fortuna VRF requests in the operator's in-memory queue. 0 when products.fortuna is disabled. |
+| `automaton_themis_chambers` | gauge | Number of Themis chambers this operator is configured to serve. 0 when products.themis is disabled. |
+| `automaton_themis_pending_reveals` | gauge | Number of Themis chambers tracking an unsettled round with at least one bid cached. Includes rounds whose commit window is still open (the worker counts pending work, not work the gate would let through right now). |
 | `automaton_cycle_duration_seconds` | histogram | End-to-end tick duration. |
 | `automaton_last_cycle_completed_at_seconds` | gauge | Unix time of the last successful cycle. Drives `/healthz`. |
 | `automaton_self_slash_total` | counter | How many times this wallet was slashed. Alerting gold. |

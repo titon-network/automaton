@@ -23,6 +23,9 @@ importers:
       '@titon-network/kronos-sdk':
         specifier: ^0.8.4
         version: 0.8.4(@titon-network/forgeton-sdk@0.9.1(@ton/core@0.63.1(@ton/crypto@3.3.0)))(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/sandbox@0.41.0(@ton-community/func-js@0.11.0)(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/crypto@3.3.0)(@ton/test-utils@0.12.0(@jest/globals@30.3.0)(@ton/core@0.63.1(@ton/crypto@3.3.0)))(jest@30.3.0(@types/node@22.19.17)(ts-node@10.9.2(@types/node@22.19.17)(typescript@5.9.3))))
+      '@titon-network/themis-sdk':
+        specifier: 0.1.0-alpha.0
+        version: 0.1.0-alpha.0(c9ac110cc70f21208740c4343f548d28)
       '@ton/core':
         specifier: ^0.63.0
         version: 0.63.1(@ton/crypto@3.3.0)
@@ -369,6 +372,10 @@ packages:
   '@napi-rs/wasm-runtime@0.2.12':
     resolution: {integrity: sha512-ZVWUcfwY4E/yPitQJl481FjFo3K22D6qF0DuFH6Y/nbnE11GY5uguDxZMGXPQ8WQ0128MXQD7TnfHyK4oWoIJQ==}
 
+  '@noble/ciphers@1.3.0':
+    resolution: {integrity: sha512-2I0gnIVPtfnMw9ee9h1dJG7tp81+8Ob3OJb3Mv37rx5L40/b0i7djjCVvGOVqc9AEIQyvyu1i6ypKdFw8R8gQw==}
+    engines: {node: ^14.21.3 || >=16}
+
   '@noble/curves@1.9.7':
     resolution: {integrity: sha512-gbKGcRUYIjA3/zCCNaWDciTMFI0dCkvou3TL8Zmy5Nc7sJ47a0jtOeZoTaMxkuqRo9cRhjOdZJXegxYE5FN/xw==}
     engines: {node: ^14.21.3 || >=16}
@@ -448,6 +455,22 @@ packages:
       '@titon-network/forgeton-sdk':
         optional: true
       '@ton/sandbox':
+        optional: true
+
+  '@titon-network/themis-sdk@0.1.0-alpha.0':
+    resolution: {integrity: sha512-U9cDI9nEWmra8Yl4UbRxOTMfDtp4Rjd17Ox/tt/4yfEp9REgF+Ohv8ZbHSx1dXlhNKzSQ7HzBaBebBYkHVi9gw==}
+    engines: {node: '>=22'}
+    peerDependencies:
+      '@titon-network/atlas-sdk': ^0.2.0
+      '@titon-network/forgeton-sdk': ^0.8.0
+      '@titon-network/fortuna-sdk': ^0.3.0
+      '@ton/core': ^0.63.0
+    peerDependenciesMeta:
+      '@titon-network/atlas-sdk':
+        optional: true
+      '@titon-network/forgeton-sdk':
+        optional: true
+      '@titon-network/fortuna-sdk':
         optional: true
 
   '@ton-community/func-js-bin@0.4.6-wasmfix.debugger.1':
@@ -2294,6 +2317,8 @@ snapshots:
       '@tybys/wasm-util': 0.10.2
     optional: true
 
+  '@noble/ciphers@1.3.0': {}
+
   '@noble/curves@1.9.7':
     dependencies:
       '@noble/hashes': 1.8.0
@@ -2347,6 +2372,17 @@ snapshots:
     optionalDependencies:
       '@titon-network/forgeton-sdk': 0.9.1(@ton/core@0.63.1(@ton/crypto@3.3.0))
       '@ton/sandbox': 0.41.0(@ton-community/func-js@0.11.0)(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/crypto@3.3.0)(@ton/test-utils@0.12.0(@jest/globals@30.3.0)(@ton/core@0.63.1(@ton/crypto@3.3.0)))(jest@30.3.0(@types/node@22.19.17)(ts-node@10.9.2(@types/node@22.19.17)(typescript@5.9.3)))
+
+  '@titon-network/themis-sdk@0.1.0-alpha.0(c9ac110cc70f21208740c4343f548d28)':
+    dependencies:
+      '@noble/ciphers': 1.3.0
+      '@noble/curves': 1.9.7
+      '@noble/hashes': 1.8.0
+      '@ton/core': 0.63.1(@ton/crypto@3.3.0)
+    optionalDependencies:
+      '@titon-network/atlas-sdk': 0.3.0(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/sandbox@0.41.0(@ton-community/func-js@0.11.0)(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/crypto@3.3.0)(@ton/test-utils@0.12.0(@jest/globals@30.3.0)(@ton/core@0.63.1(@ton/crypto@3.3.0)))(jest@30.3.0(@types/node@22.19.17)(ts-node@10.9.2(@types/node@22.19.17)(typescript@5.9.3))))
+      '@titon-network/forgeton-sdk': 0.9.1(@ton/core@0.63.1(@ton/crypto@3.3.0))
+      '@titon-network/fortuna-sdk': 0.4.0(@titon-network/atlas-sdk@0.3.0(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/sandbox@0.41.0(@ton-community/func-js@0.11.0)(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/crypto@3.3.0)(@ton/test-utils@0.12.0(@jest/globals@30.3.0)(@ton/core@0.63.1(@ton/crypto@3.3.0)))(jest@30.3.0(@types/node@22.19.17)(ts-node@10.9.2(@types/node@22.19.17)(typescript@5.9.3)))))(@titon-network/forgeton-sdk@0.9.1(@ton/core@0.63.1(@ton/crypto@3.3.0)))(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/sandbox@0.41.0(@ton-community/func-js@0.11.0)(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/crypto@3.3.0)(@ton/test-utils@0.12.0(@jest/globals@30.3.0)(@ton/core@0.63.1(@ton/crypto@3.3.0)))(jest@30.3.0(@types/node@22.19.17)(ts-node@10.9.2(@types/node@22.19.17)(typescript@5.9.3))))
 
   '@ton-community/func-js-bin@0.4.6-wasmfix.debugger.1': {}
 

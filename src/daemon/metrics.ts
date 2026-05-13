@@ -40,6 +40,8 @@ export interface DaemonMetrics {
         accumulatedFees: Gauge<string>;
         registryPaused: Gauge<string>;
         fortunaPendingRequests: Gauge<string>;
+        themisChambers: Gauge<string>;
+        themisPendingReveals: Gauge<string>;
         lastCycleCompletedAt: Gauge<string>;
     };
     /**
@@ -133,6 +135,14 @@ export function createDaemonMetrics(): DaemonMetrics {
         fortunaPendingRequests: gauge(
             'automaton_fortuna_pending_requests',
             'Number of Fortuna VRF requests sitting in the operator\'s in-memory pending queue. 0 when products.fortuna is disabled or no requests are awaiting fulfillment.',
+        ),
+        themisChambers: gauge(
+            'automaton_themis_chambers',
+            'Number of Themis chambers this operator is configured to serve. 0 when products.themis is disabled.',
+        ),
+        themisPendingReveals: gauge(
+            'automaton_themis_pending_reveals',
+            'Number of Themis chambers tracking an unsettled round with at least one bid cached. Includes rounds whose commit window is still open — the worker counts pending work, not work the gate would let through right now. 0 when products.themis is disabled or no chambers have outstanding bids.',
         ),
         lastCycleCompletedAt: gauge(
             'automaton_last_cycle_completed_at_seconds',

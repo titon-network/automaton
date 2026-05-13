@@ -634,17 +634,15 @@ export class ThemisWorker {
                 built.aggSigRef,
             );
         };
+        // Chamber-side acceptance check. Naive `roundId-changed` doesn't
+        // work: `RevealRound` settles the round IN PLACE — only
+        // `AdvanceRound` advances `roundId`, and that's a separate
+        // post-revealEta tx (often by someone else). So we instead poll
+        // the chamber's most-recent inbound transactions for the one
+        // sourced from this operator with op=RevealRound, and read its
+        // computePhase exitCode directly.
         const verify = async (): Promise<void> => {
-            // A successful reveal advances the chamber's round; the live
-            // round we read on next call should differ. If still equal,
-            // the submission didn't land.
-            const post = await contract.getCurrentRound();
-            if (post.roundId === round.roundId) {
-                throw new Error(
-                    `RevealRound did not advance roundId (still ${roundIdStr}). ` +
-                        `Likely race-lost to another operator OR the message reverted.`,
-                );
-            }
+            await this.assertChamberAccepted(contract.address, round.roundId, roundIdStr);
         };
 
         if (this.deps.submitReveal !== undefined) {
@@ -683,6 +681,85 @@ export class ThemisWorker {
         };
         this.configCache.set(key, entry);
         return entry;
+    }
+
+    /**
+     * Confirm the chamber accepted our just-sent `RevealRound` by reading
+     * the computePhase `exitCode` of the matching inbound tx in the
+     * chamber's recent history. Polls up to ~30 s — toncenter takes a
+     * couple of seconds to surface freshly-landed txs through the
+     * paged-tx history endpoint, so the first poll often shows nothing.
+     *
+     * Throws on:
+     *   - chamber rejected the inbound (exitCode != 0) — message wraps
+     *     the actual exit code so `explainExitCode('themis', code)`
+     *     resolves it via the unified explainer.
+     *   - tx not found within the poll window — most likely the wallet
+     *     tx was attributed but propagation lag is still in flight; we
+     *     err on the side of "throw + retry next tick" rather than
+     *     silently report success.
+     *
+     * Why `roundId`-comparison doesn't work as a verifier:
+     * `RevealRound` settles the round IN PLACE (`phase = REVEALED` on
+     * `RoundBlob`); `getCurrentRound()` returns the same `roundId`
+     * until someone permissionlessly calls `AdvanceRound` (often a
+     * separate operator after `revealEta`). The historical bug here
+     * (≤ 0.9.0) treated the unchanged `roundId` as proof the reveal
+     * failed — false-negative on every successful reveal, leading to
+     * spurious retries that reverted with `E_ROUND_ALREADY_REVEALED`
+     * (156). Pinned by tests/themis-worker.spec.ts.
+     */
+    private async assertChamberAccepted(
+        chamberAddr: Address,
+        roundId: bigint,
+        roundIdStr: string,
+    ): Promise<void> {
+        const me = this.deps.wallet.address;
+        const deadlineMs = Date.now() + 30_000;
+        // OP_REVEAL_ROUND (0x92) — duplicated here rather than imported
+        // from themis-sdk to keep the verify hot-path free of cross-package
+        // re-resolution; the constant has been frozen since v1.
+        const OP_REVEAL_ROUND = 0x92;
+
+        let lastErr: unknown;
+        while (Date.now() < deadlineMs) {
+            try {
+                const txs = await this.deps.client.call((c) =>
+                    c.getTransactions(chamberAddr, { limit: 10 }),
+                );
+                for (const tx of txs) {
+                    const inMsg = tx.inMessage;
+                    if (inMsg === undefined || inMsg === null) continue;
+                    if (inMsg.info.type !== 'internal') continue;
+                    if (!inMsg.info.src.equals(me)) continue;
+                    const slice = inMsg.body.beginParse();
+                    if (slice.remainingBits < 32) continue;
+                    if (slice.preloadUint(32) !== OP_REVEAL_ROUND) continue;
+
+                    const desc = tx.description;
+                    if (desc.type !== 'generic' || desc.computePhase.type !== 'vm') {
+                        // skipped phase (rare for our-sent inbound) — keep
+                        // looking for another candidate.
+                        continue;
+                    }
+                    const exitCode = desc.computePhase.exitCode;
+                    if (exitCode === 0) return;
+                    throw new Error(
+                        `chamber rejected RevealRound for roundId=${roundIdStr}: exit ${exitCode}. ` +
+                            `Run \`automaton explain-exit-code ${exitCode}\` (origin=themis) for details.`,
+                    );
+                }
+                lastErr = new Error('no matching RevealRound tx in chamber history yet');
+            } catch (err) {
+                lastErr = err;
+            }
+            await new Promise((r) => setTimeout(r, 2000));
+        }
+        const reason = lastErr instanceof Error ? lastErr.message : String(lastErr);
+        throw new Error(
+            `assertChamberAccepted timed out after 30s waiting for RevealRound ` +
+                `tx (roundId=${roundIdStr}) to surface in chamber history: ${reason}`,
+        );
     }
 
     /** Drop cached chamber configs — wired to chamber `ConfigUpdated` events

@@ -85,8 +85,24 @@ export interface SendAndConfirmOptions {
 
 const DEFAULT_TIMEOUT_MS = 60_000;
 const DEFAULT_POLL_INTERVAL_MS = 2_000;
-/** How many recent txs to fetch when attributing the wallet-initiated one. */
-const TX_LOOKBACK = 4;
+/**
+ * How many recent txs to fetch when attributing the wallet-initiated one.
+ *
+ * Sized for multi-product operators whose wallet is bursty: a Fortuna
+ * fulfillment + a Themis reveal + a Kronos execute can land within the
+ * same poll cycle, and we need the lookback window to comfortably span
+ * the worst-case interleaving between the seqno bump we observed and
+ * the moment we read the wallet's tx history. 4 was too tight (real-
+ * world miss in 0.9.1 with Themis + Fortuna + Kronos co-running on
+ * the canary — RevealRound got pushed past the 4-tx window by an
+ * intervening Fortuna fulfillment). 32 absorbs ~8s of bursty tx
+ * production at a few-tx-per-second sustained rate, which is well past
+ * anything an operator with all three products would realistically hit.
+ *
+ * Cost is one toncenter `getTransactions(limit=N)` call — N=32 is a
+ * single HTTP round-trip on toncenter (which caps `limit` at 100).
+ */
+const TX_LOOKBACK = 32;
 
 export class ConfirmationTimeoutError extends Error {
     constructor(

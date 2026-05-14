@@ -270,6 +270,18 @@ The pre-submit live freshness check (`getCurrentRound`) reports a different `rou
 
 **Fix:** informational. In solo-mode v1 you're the only operator — this only fires after a missed reveal that triggered `AdvanceRound`.
 
+### `themis: RevealRound threw — RevealRound did not advance roundId (still N)` (FIXED in 0.9.1)
+
+False-negative phantom failure on **every successful reveal** in 0.9.0. The verify callback expected `getCurrentRound().roundId` to advance after `RevealRound`, but `RevealRound` settles the round IN PLACE (`phase = REVEALED`); only `AdvanceRound` advances `roundId`. The reveal had actually landed cleanly — chamber emitted `EvtRoundRevealed` + dispatched `RevealCallback` to the consumer — but the worker would log this error AND retry on the next tick, where the second `RevealRound` would revert with `E_ROUND_ALREADY_REVEALED (156)` (wasted gas + alarming logs).
+
+**Fix:** upgrade to **automaton@0.9.1** or later — `submitOne`'s verify is now `assertChamberAccepted`, which polls the chamber's recent inbound txs for the matching `RevealRound` and reads its `computePhase.exitCode` directly.
+
+### `themis: RevealRound threw — seqno advanced for ... but the wallet-initiated tx could not be located in the last N transactions` (FIXED in 0.9.2)
+
+`TxAttributionError` from `sendAndConfirm`. The wallet's seqno bumped (so the external message was accepted by the chain) but `getTransactions(limit=4)` couldn't find a matching external-in tx in the last 4. Surfaces on operators co-running multiple products (Fortuna fulfillment + Themis reveal + Kronos execute can land within the same tick); intervening txs push the just-sent one past the lookback window.
+
+**Fix:** upgrade to **automaton@0.9.2** or later — `TX_LOOKBACK` widened from 4 → 32 (one toncenter HTTP round-trip; absorbs ~8s of bursty tx production). Affected all workers, not just Themis.
+
 ### Multi-op: `fortuna: signed + broadcast our partial peers=N ok=0`
 
 Daemon signed locally + tried to POST partials to all peers; **zero** peers received it. Requests will time out and consumers will reclaim.

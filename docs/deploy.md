@@ -91,6 +91,8 @@ To run as a service (Linux): see [§6 Self-hosted systemd](#6-self-hosted-system
 
 **The recommended mainnet path.** Single t4g.small per region (~$13.50/mo on-demand, ~$7/mo on a Savings Plan), encrypted secrets in **SSM Parameter Store** (KMS-encrypted, IAM-scoped, rotation-friendly — never in Terraform state), Docker container running the team-published `public.ecr.aws/b0k9s4w3/automaton:0.8.0` multi-arch image (built from the audited-SDK-pinned codebase) under systemd, no inbound SSH (SSM Session Manager for ops), multi-region by instantiating once per region with its own SSM path.
 
+> ⚠️ **Image at 0.8.0; npm at 0.9.2.** The team-published image is themis-unaware until rebuilt. For Kronos+Fortuna mainnet today the 0.8.0 image is fine. For Themis service via this module, override `automaton_image` to a self-built `0.9.2`-or-later image (`docker buildx build --platform linux/amd64,linux/arm64 --tag <your-registry>/automaton:0.9.2 -f automaton/Dockerfile --push ..` from the parent dir) or wait for the team rebuild. The Lightsail module ([§4 below](#4-aws-lightsail--cheapest-cloud)) installs from npm + auto-pulls 0.9.2-or-later, so it's themis-aware out of the box.
+
 Full module reference: [`contrib/aws/ec2/README.md`](../contrib/aws/ec2/README.md). Multi-op Fortuna protocol + operator setup: [`docs/multi-op-fortuna.md`](multi-op-fortuna.md).
 
 ### Prerequisites

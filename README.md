@@ -82,6 +82,10 @@ The team-published multi-arch image is at `public.ecr.aws/b0k9s4w3/automaton`:
 docker run --rm public.ecr.aws/b0k9s4w3/automaton:0.8.0 --version
 ```
 
+> ⚠️ **Image pinning lag.** The team-published image is currently **0.8.0** (last rebuilt 2026-05-08). The npm package is at **0.9.2** with Themis support + the verify-callback fix + the TX_LOOKBACK widen — Docker users miss those until the image is rebuilt. Workarounds:
+> - **For Themis operators**: install via `npm install -g @titon-network/automaton@0.9.2` (or use the [Lightsail module](contrib/aws/lightsail/), which uses npm install).
+> - **Or self-build**: `docker buildx build --platform linux/amd64,linux/arm64 --tag titon/automaton:0.9.2 -f automaton/Dockerfile ..` (build context = parent dir; see `Dockerfile` for the multi-stage shape).
+
 A full daemon run (assuming you've run `automaton init` on the host and mounted the resulting directory):
 
 ```bash
@@ -100,6 +104,8 @@ The image is built from [distroless/nodejs22](https://github.com/GoogleContainer
 ### AWS EC2 via Terraform — **the mainnet path**
 
 [`contrib/aws/ec2/`](contrib/aws/ec2/) ships the production-grade module: SSM-backed secrets (KMS-encrypted, IAM-scoped — never in Terraform state), no inbound SSH (SSM Session Manager for ops), `peer_ips` variable for multi-op Fortuna, and the multi-arch `public.ecr.aws/b0k9s4w3/automaton:0.8.0` image (built from the audited-SDK-pinned codebase) baked into the default. ~$13.50/mo per region on-demand (~$7/mo on a Savings Plan); multi-region capable. The full operator playbook — wallet generation, SSM secret upload, terraform apply, fund + register, multi-op Fortuna setup — lives in this repo at [`contrib/aws/ec2/README.md`](contrib/aws/ec2/README.md) (module reference) and [`docs/multi-op-fortuna.md`](docs/multi-op-fortuna.md) (multi-op protocol + ceremony).
+
+> ⚠️ **Same image-pinning lag as the §Docker section above.** EC2 module's `automaton_image` default points at `0.8.0`, which is themis-unaware. For Themis service from EC2, override `automaton_image` to a self-built `0.9.2` image (see Docker section), or wait for the team rebuild.
 
 ### AWS Lightsail via Terraform — testnet / canary path
 

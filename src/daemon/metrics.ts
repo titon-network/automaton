@@ -42,6 +42,7 @@ export interface DaemonMetrics {
         fortunaPendingRequests: Gauge<string>;
         themisChambers: Gauge<string>;
         themisPendingReveals: Gauge<string>;
+        phoebeLastPushSec: Gauge<string>;
         lastCycleCompletedAt: Gauge<string>;
     };
     /**
@@ -143,6 +144,10 @@ export function createDaemonMetrics(): DaemonMetrics {
         themisPendingReveals: gauge(
             'automaton_themis_pending_reveals',
             'Number of Themis chambers tracking an unsettled round with at least one bid cached. Includes rounds whose commit window is still open — the worker counts pending work, not work the gate would let through right now. 0 when products.themis is disabled or no chambers have outstanding bids.',
+        ),
+        phoebeLastPushSec: gauge(
+            'automaton_phoebe_last_push_seconds',
+            'Unix timestamp of the most recent successful PushSnapshot. /healthz can flag staleness when now − this > 2×pushIntervalSec. 0 when products.phoebe is disabled or no push has landed yet.',
         ),
         lastCycleCompletedAt: gauge(
             'automaton_last_cycle_completed_at_seconds',

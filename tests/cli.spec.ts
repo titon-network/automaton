@@ -10,6 +10,21 @@ const ROOT = join(__dirname, '..');
 const CLI = join(ROOT, 'dist', 'cli', 'index.js');
 const PKG_VERSION = (require(join(ROOT, 'package.json')) as { version: string }).version;
 
+/** Track scratch TITON_HOMEs created during a test for cleanup in afterEach.
+ *  Each call returns a fresh `mkdtempSync` directory under the OS tmpdir —
+ *  no hardcoded `/tmp/titon-fresh-...` paths that would collide under
+ *  parallel jobs or leak between runs. */
+const scratchHomes: string[] = [];
+function freshHome(): string {
+    const dir = mkdtempSync(join(tmpdir(), 'titon-cli-'));
+    scratchHomes.push(dir);
+    return dir;
+}
+afterEach(() => {
+    for (const dir of scratchHomes) rmSync(dir, { recursive: true, force: true });
+    scratchHomes.length = 0;
+});
+
 function run(
     args: string[],
     env: Record<string, string> = {},
@@ -87,7 +102,7 @@ describe('automaton CLI scaffold', () => {
     it('run without install exits non-zero with a pointer to init', () => {
         // No TITON_HOME override → runDaemon fails at loadConfig with
         // ConfigNotFoundError. Verifies the error is actionable.
-        const { stdout, status } = run(['run'], { TITON_HOME: '/tmp/titon-fresh-for-run-spec' });
+        const { stdout, status } = run(['run'], { TITON_HOME: freshHome() });
         expect(status).not.toBe(0);
         expect(stdout).toMatch(/config not found|automaton init/);
     });
@@ -96,7 +111,7 @@ describe('automaton CLI scaffold', () => {
         // No TITON_HOME override + no stub state → runStatus fails with
         // "no config" (caller hasn't run init). Verifies the error is
         // actionable, not a stack trace.
-        const { stdout, status } = run(['status'], { TITON_HOME: '/tmp/titon-fresh-for-cli-spec' });
+        const { stdout, status } = run(['status'], { TITON_HOME: freshHome() });
         expect(status).not.toBe(0);
         expect(stdout).toMatch(/no config|automaton init/);
     });
@@ -108,7 +123,7 @@ describe('automaton CLI scaffold', () => {
         // the test doesn't hit the "refuse to overwrite existing files" guard
         // when the developer running tests has a real install on the host.
         const { stdout, status } = run(['init'], {
-            TITON_HOME: '/tmp/titon-fresh-for-init-tty-spec',
+            TITON_HOME: freshHome(),
         });
         expect(status).not.toBe(0);
         expect(stdout.toLowerCase()).toMatch(/not a tty|tty/);
@@ -161,7 +176,7 @@ describe('automaton CLI scaffold', () => {
         it('rejects an unknown --log-format with a clear error', () => {
             const { stdout, status } = run(
                 ['run', '--log-format', 'xml'],
-                { TITON_HOME: '/tmp/titon-fresh-for-run-logformat-spec' },
+                { TITON_HOME: freshHome() },
             );
             expect(status).not.toBe(0);
             expect(stdout).toMatch(/--log-format must be/);
@@ -218,7 +233,7 @@ describe('automaton CLI scaffold', () => {
     describe('config show', () => {
         it('refuses when no config file exists, pointing at init', () => {
             const { stdout, status } = run(['config', 'show'], {
-                TITON_HOME: '/tmp/titon-fresh-for-config-show-spec',
+                TITON_HOME: freshHome(),
             });
             expect(status).not.toBe(0);
             expect(stdout).toMatch(/no config/);
@@ -228,7 +243,7 @@ describe('automaton CLI scaffold', () => {
         it('rejects an invalid --format with exit 2', () => {
             const { stdout, status } = run(
                 ['config', 'show', '--format', 'toml'],
-                { TITON_HOME: '/tmp/titon-fresh-for-config-show-spec-fmt' },
+                { TITON_HOME: freshHome() },
             );
             expect(status).toBe(2);
             expect(stdout).toMatch(/--format must be/);
@@ -345,7 +360,7 @@ describe('automaton CLI scaffold', () => {
     describe('config edit', () => {
         it('refuses when no config exists, pointing at init', () => {
             const { stdout, status } = run(['config', 'edit'], {
-                TITON_HOME: '/tmp/titon-fresh-for-config-edit-spec',
+                TITON_HOME: freshHome(),
             });
             expect(status).not.toBe(0);
             expect(stdout).toMatch(/no config/);

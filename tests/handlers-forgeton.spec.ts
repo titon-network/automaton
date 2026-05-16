@@ -357,3 +357,59 @@ describe('selfSlashHandler — webhook non-OK status', () => {
         expect(errLine!.fields?.url).toBe('https://example.com/hook');
     });
 });
+
+describe('selfSlashHandler — SSRF defense: redirect: error is honored', () => {
+    // The handler passes `redirect: 'error'` to fetch so that an allowed
+    // webhook host that 3xx-redirects to 169.254.169.254 (cloud metadata)
+    // surfaces as a fetch failure — NOT as a successful POST to the
+    // attacker. Pinned because the schema's host allowlist alone is
+    // necessary but not sufficient; without this option, a compromised
+    // allowed host can 30x out to anywhere.
+    it('does not follow redirects and logs the failure', async () => {
+        const { log, messages } = captureLogger();
+        const followAttempts: string[] = [];
+        // A real `fetch` with redirect:'error' rejects on a 3xx with a
+        // RedirectError. We simulate that by inspecting init.redirect
+        // and rejecting accordingly.
+        const fakeFetch: typeof fetch = (async (url: unknown, init?: RequestInit) => {
+            if (init?.redirect !== 'error') {
+                // If the handler ever stops passing redirect:'error',
+                // record the URL it WOULD have followed — the test
+                // assertion below fails loudly.
+                followAttempts.push(String(url));
+                return new Response('ok', { status: 200 });
+            }
+            // Simulate undici's RedirectError shape.
+            const err = new Error('unexpected redirect') as Error & { code: string };
+            err.code = 'UND_ERR_REDIRECT';
+            throw err;
+        }) as unknown as typeof fetch;
+
+        const handler = selfSlashHandler({
+            me: ME,
+            logger: log,
+            webhookUrl: 'https://example.com/hook',
+            fetch: fakeFetch,
+        });
+
+        const event: ForgetonEvent = {
+            kind: 'AutomatonSlashed',
+            opcode: 0,
+            automaton: ME,
+            slasher: OTHER,
+            reason: 1,
+            amount: toNano('0.5'),
+            remainingStake: toNano('9.5'),
+            slashCount: 1,
+        };
+        await handler.on!.pool!(event, fakeTxContext());
+        await new Promise((r) => setImmediate(r));
+
+        expect(followAttempts).toEqual([]); // never tried to follow
+        const errLine = messages.find(
+            (m) => m.level === 'error' && m.msg.includes('webhook POST failed'),
+        );
+        expect(errLine).toBeDefined();
+        expect(String(errLine!.fields?.error)).toContain('unexpected redirect');
+    });
+});

@@ -6,6 +6,7 @@
 // can emit a working config without interrogating the user for every knob.
 
 import { z } from 'zod';
+import { KNOWN_SOURCE_NAMES } from '../products/phoebe-sources';
 
 // Bump when ANY field is added/removed/renamed, or when a field's semantics
 // change. Loaders reject configs that don't match — same schema-versioning
@@ -135,6 +136,8 @@ export const ConfigSchema = z.object({
         // `themis: false` filled in. New configs from `automaton init`
         // (or `defaultConfig`) write the explicit field.
         themis: z.boolean().default(false),
+        // Same `.default(false)` round-trip discipline for phoebe.
+        phoebe: z.boolean().default(false),
     }),
     // Optional per-product deployment overrides. Required when the SDK's
     // own deployment constant is null (pre-testnet) AND the corresponding
@@ -198,6 +201,132 @@ export const ConfigSchema = z.object({
                 .optional(),
         })
         .optional(),
+    // Phoebe price-oracle config. Required when products.phoebe is true.
+    //
+    //   atlasAddress, phoebeAddress — pre-launch overrides; the SDK's
+    //     ATLAS_TESTNET / PHOEBE_TESTNET (and mainnet equivalents) fall
+    //     back when null.
+    //   pushIntervalMs — heartbeat cadence for snapshot pushes. Default
+    //     30000 (30s) — matches contract's typical `maxPushDrift`. Below
+    //     this means wasted gas; above this means stale roots get
+    //     accepted by consumers requesting at-most `maxPushDrift` old.
+    //   feeds — static price feeds the operator publishes. v1 has no
+    //     pluggable price sources — operators hand-set values + bump them
+    //     via config edits. v1.1 adds a `PriceSource` interface for HTTP
+    //     adapters. Empty / undefined = worker is a no-op (heartbeat
+    //     skipped; logs at debug level once per tick).
+    //   peers — multi-op share-exchange peers (mirrors fortuna.peers).
+    //     Empty / undefined = solo-mode fast path. Populated = leader
+    //     proposes (timestamp, root), peers verify drift + sign their
+    //     partial, leader aggregates and submits. See
+    //     ../daemon/share-exchange-phoebe.ts.
+    //   shareExchangePort — inbound POST /phoebe/v1/share bind. Default
+    //     9092 (fortuna uses 9091; avoid collision when both products
+    //     run on the same host).
+    phoebe: z
+        .object({
+            atlasAddress: z.string().optional(),
+            phoebeAddress: z.string().optional(),
+            // Push cadence. Floor 5s (anything below is gas waste; the
+            // contract bounces if pushed too often anyway). Ceiling 1h —
+            // consumers requesting price with default `maxStaleness` will
+            // start failing well before that, but it's still inside the
+            // contract's `maxPushDrift` upper bound.
+            pushIntervalMs: z
+                .number()
+                .int()
+                .min(5_000)
+                .max(3_600_000)
+                .default(30_000),
+            // Price feeds — accepts EITHER static form (legacy / dev /
+            // testnet) or dynamic form (production v2):
+            //
+            //   Static — operator hand-sets values. Mantissa is a
+            //   decimal string (zod coerces for JSON readability —
+            //   bigint isn't a JSON primitive). expo + confBps follow
+            //   phoebe's PriceLeaf wire shape.
+            //     { feedId, mantissa, expo, confBps }
+            //
+            //   Dynamic — aggregator pulls live prices from CEX/DEX
+            //   sources. Each entry pins a list of `{name, symbol}` —
+            //   adapter name from the registry (`binance`, `coinbase`,
+            //   `kraken`, `stonfi-twap`) + exchange-native symbol
+            //   (Binance "TONUSDT", Coinbase "TON-USD", Kraken "TON/USD").
+            //   The aggregator takes the median across fresh ticks per
+            //   push window, with half-spread → confBps. See
+            //   `src/products/phoebe-sources/manager.ts` for the
+            //   median + stale-tick + minSources logic.
+            //     { feedId, sources: [{name, symbol}, ...],
+            //       minSources?, maxStaleMs?, expo? }
+            feeds: z
+                .array(
+                    z.union([
+                        z.object({
+                            feedId: z.number().int().min(0).max(255),
+                            mantissa: z
+                                .string()
+                                .regex(/^-?\d+$/, 'must be a decimal integer string'),
+                            expo: z.number().int().min(-128).max(127),
+                            confBps: z.number().int().min(0).max(65_535),
+                        }),
+                        z.object({
+                            feedId: z.number().int().min(0).max(255),
+                            sources: z
+                                .array(
+                                    z.object({
+                                        // Constrained to the names the
+                                        // adapter registry actually knows
+                                        // about — typos like "binance-us"
+                                        // fail at config-load instead of
+                                        // 30 min into running daemon.
+                                        name: z
+                                            .string()
+                                            .refine(
+                                                (n) =>
+                                                    (
+                                                        KNOWN_SOURCE_NAMES as readonly string[]
+                                                    ).includes(n),
+                                                {
+                                                    message: `unknown price source. Known: ${KNOWN_SOURCE_NAMES.join(', ')}`,
+                                                },
+                                            ),
+                                        symbol: z.string().min(1),
+                                    }),
+                                )
+                                .min(1, 'dynamic feed needs at least one source'),
+                            minSources: z.number().int().min(1).optional(),
+                            maxStaleMs: z
+                                .number()
+                                .int()
+                                .min(1_000)
+                                .max(600_000)
+                                .optional(),
+                            expo: z.number().int().min(-128).max(127).optional(),
+                        }),
+                    ]),
+                )
+                .optional(),
+            // Multi-op share-exchange — same shape as fortuna.peers.
+            peers: z
+                .array(
+                    z.object({
+                        address: z.string(),
+                        endpoint: z.string().url(),
+                    }),
+                )
+                .optional(),
+            shareExchangePort: z
+                .number()
+                .int()
+                .min(1)
+                .max(65_535)
+                .optional(),
+            shareExchangeHost: z.string().optional(),
+            // Non-leader grace before falling back to submitting solo
+            // (matches fortuna's pattern). Default (when present): 30s.
+            leaderGraceSec: z.number().int().min(5).max(300).optional(),
+        })
+        .optional(),
 });
 
 export type Config = z.infer<typeof ConfigSchema>;
@@ -224,6 +353,6 @@ export function defaultConfig(network: Network): Config {
         maxGasPerExecute: '0.5',
         minFreeBalance: '2.0',
         logLevel: 'info',
-        products: { kronos: true, fortuna: false, themis: false },
+        products: { kronos: true, fortuna: false, themis: false, phoebe: false },
     };
 }

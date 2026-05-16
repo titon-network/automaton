@@ -120,17 +120,18 @@ describe('runChecks', () => {
         const names = results.map((r) => r.name);
 
         // Install layer always fires; ordered as defined in buildInstallChecks.
-        expect(names.slice(0, 7)).toEqual([
+        expect(names.slice(0, 8)).toEqual([
             'node >= 22',
             '@titon-network/forgeton-sdk resolves',
             '@titon-network/kronos-sdk resolves',
             '@titon-network/atlas-sdk resolves',
             '@titon-network/fortuna-sdk resolves',
             '@titon-network/themis-sdk resolves',
+            '@titon-network/phoebe-sdk resolves',
             'package version readable',
         ]);
         // node + pkg version checks don't depend on dynamic import; they pass
-        // honestly under jest. The four SDK rows hit the jest dynamic-import
+        // honestly under jest. The SDK rows hit the jest dynamic-import
         // limitation noted at the top of the file — we just verify they ran
         // and produced a result, not the status.
         expect(findCheck(results, 'node >= 22').status).toBe('ok');
@@ -141,6 +142,7 @@ describe('runChecks', () => {
             '@titon-network/atlas-sdk resolves',
             '@titon-network/fortuna-sdk resolves',
             '@titon-network/themis-sdk resolves',
+            '@titon-network/phoebe-sdk resolves',
         ]) {
             const c = findCheck(results, n);
             expect(['ok', 'fail']).toContain(c.status);

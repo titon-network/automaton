@@ -1,0 +1,201 @@
+#!/bin/bash
+# Titon automaton — Lightsail first-boot bootstrap.
+#
+# Installs Node 22, installs @titon-network/automaton from npm, materialises
+# the operator's wallet + config + password, drops a hardened systemd unit,
+# starts the daemon. No Docker. No source clone. The SDK chain is resolved
+# transitively by npm.
+#
+# Idempotent: each step checks-then-acts. Safe to re-run via
+# `cloud-init clean && reboot` or by invoking this script directly.
+#
+# All log output → /var/log/titon-automaton-bootstrap.log.
+#
+# IMPORTANT: Lightsail prepends its own `#!/bin/sh` SSH-CA-setup block
+# to user-data and concatenates this file after it. Cloud-init then runs
+# the merged file under `sh` (dash on Ubuntu) — our shebang above ends
+# up as a literal comment in the middle. dash chokes on `set -o pipefail`
+# (bash-only) and bails before any of our bootstrap runs. Re-exec under
+# bash so the rest of this script gets a real bash interpreter.
+if [ -z "$${BASH_VERSION:-}" ]; then
+    exec /bin/bash "$0" "$@"
+fi
+
+set -euo pipefail
+exec > >(tee -a /var/log/titon-automaton-bootstrap.log) 2>&1
+echo "[$(date -Is)] titon-automaton bootstrap starting"
+
+STATE_DIR=/var/lib/automaton
+NODE_BIN=/usr/bin/node
+SVC_USER=automaton
+AUTOMATON_VERSION='${automaton_version}'
+
+# 1. Service user — daemon runs unprivileged, owns its state dir only.
+if ! id -u "$SVC_USER" >/dev/null 2>&1; then
+    useradd --system --home-dir "$STATE_DIR" --shell /usr/sbin/nologin "$SVC_USER"
+fi
+
+# 2. APT deps + Node 22 (NodeSource). curl bootstraps the repo; jq builds
+#    the endpoint JSON; ca-certificates so npm/git/curl trust HTTPS.
+export DEBIAN_FRONTEND=noninteractive
+apt-get update
+apt-get install -y --no-install-recommends ca-certificates curl jq
+if ! command -v node >/dev/null 2>&1; then
+    curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+    apt-get install -y --no-install-recommends nodejs
+fi
+
+# 3. Install @titon-network/automaton from npm. `--omit=dev` skips test
+#    dependencies; the package's own `dependencies` cover the runtime
+#    SDK chain (forgeton-sdk, kronos-sdk, atlas-sdk, fortuna-sdk).
+npm install -g --omit=dev "@titon-network/automaton@$AUTOMATON_VERSION"
+
+# 4. Materialise the keystore(s) + config into the daemon's TITON_HOME.
+#    Path layout matches `automaton init`'s output:
+#      $TITON_HOME/automaton/{wallet.enc, config.json, bls.enc?}
+mkdir -p "$STATE_DIR/automaton"
+echo "${wallet_keystore_b64}" | base64 -d > "$STATE_DIR/automaton/wallet.enc"
+chmod 600 "$STATE_DIR/automaton/wallet.enc"
+
+# Optional BLS keystore — only when the operator passed `bls_keystore_file`
+# to the module (Fortuna enabled). Empty-string sentinel = no Fortuna,
+# skip the write and leave `products.fortuna: false` in the config below.
+BLS_KEYSTORE_B64='${bls_keystore_b64}'
+if [ -n "$BLS_KEYSTORE_B64" ]; then
+    echo "$BLS_KEYSTORE_B64" | base64 -d > "$STATE_DIR/automaton/bls.enc"
+    chmod 600 "$STATE_DIR/automaton/bls.enc"
+fi
+
+# RPC endpoint resolution — `${rpc_url}` is the resolved URL (toncenter
+# default if unset by the operator); `${rpc_api_key}` is "" when absent
+# (terraform's templatefile can't pass nulls, so we use "" as the
+# absent sentinel and emit only `{url}` in that case).
+RPC_URL='${rpc_url}'
+RPC_API_KEY='${rpc_api_key}'
+if [ -n "$RPC_API_KEY" ]; then
+    ENDPOINT_JSON=$(jq -n --arg url "$RPC_URL" --arg key "$RPC_API_KEY" '{url: $url, apiKey: $key}')
+else
+    ENDPOINT_JSON=$(jq -n --arg url "$RPC_URL" '{url: $url}')
+fi
+
+# Themis chamber list. Terraform CSV-encodes a list<string> here (lists
+# don't survive heredoc interpolation cleanly); split on `,` + JSON-array-
+# encode for config.json. Empty CSV → empty array → enable_themis is
+# false anyway (the module gates enable_themis on length > 0).
+THEMIS_CHAMBERS_CSV='${themis_chambers_csv}'
+if [ -n "$THEMIS_CHAMBERS_CSV" ]; then
+    THEMIS_CHAMBERS_JSON=$(echo "$THEMIS_CHAMBERS_CSV" | tr ',' '\n' | jq -R . | jq -s -c .)
+else
+    THEMIS_CHAMBERS_JSON='[]'
+fi
+
+# Inject the themis config block ONLY when enabled — keeps disabled
+# configs unchanged from the pre-themis shape, so Fortuna-only / Kronos-only
+# canaries don't drift on schema diffs after upgrading the module.
+if ${enable_themis}; then
+    THEMIS_BLOCK=", \"themis\": { \"chambers\": $THEMIS_CHAMBERS_JSON }"
+else
+    THEMIS_BLOCK=""
+fi
+
+# Phoebe feed list. base64-encoded JSON survives the terraform → templatefile
+# → heredoc → bash chain regardless of payload (the alphabet is a-zA-Z0-9+/=,
+# no bash-special chars). Decode at apply time, then splice into config.json
+# alongside the themis block.
+PHOEBE_FEEDS_JSON_B64='${phoebe_feeds_json_b64}'
+if ${enable_phoebe}; then
+    PHOEBE_FEEDS_JSON=$(echo "$PHOEBE_FEEDS_JSON_B64" | base64 -d)
+    PHOEBE_BLOCK=", \"phoebe\": { \"pushIntervalMs\": ${phoebe_push_interval_ms}, \"feeds\": $PHOEBE_FEEDS_JSON }"
+else
+    PHOEBE_BLOCK=""
+fi
+
+cat > "$STATE_DIR/automaton/config.json" <<EOF
+{
+  "configVersion": 1,
+  "network": "${network}",
+  "endpoints": [$ENDPOINT_JSON],
+  "walletVersion": "v5r1",
+  "metricsPort": 9090,
+  "metricsHost": "127.0.0.1",
+  "pollIntervalMs": 10000,
+  "gaugeSnapshotEveryNTicks": 6,
+  "maxGasPerExecute": "0.5",
+  "minFreeBalance": "2.0",
+  "logLevel": "info",
+  "products": { "kronos": true, "fortuna": ${enable_fortuna}, "themis": ${enable_themis}, "phoebe": ${enable_phoebe} }$THEMIS_BLOCK$PHOEBE_BLOCK
+}
+EOF
+chmod 600 "$STATE_DIR/automaton/config.json"
+chown -R "$SVC_USER:$SVC_USER" "$STATE_DIR"
+
+# 5. Password env file — root-only, read by systemd's EnvironmentFile
+#    before the User= drop happens. Use printf %s so any special chars
+#    in the password (quotes, $, backticks) survive intact.
+install -m 0600 -o root -g root /dev/null /etc/automaton.env
+{
+    printf '# Generated by titon-automaton terraform-lightsail module.\n'
+    printf 'AUTOMATON_PASSWORD=%s\n' "$(echo '${keystore_password_b64}' | base64 -d)"
+} > /etc/automaton.env
+
+# 6. systemd unit — runs as $SVC_USER, password supplied via systemd's
+#    EnvironmentFile (read as root, then privs drop). Hardening profile
+#    matches `contrib/automaton.service`. The `automaton` bin is provided
+#    by `npm install -g`, which symlinks it under /usr/bin (or the
+#    NodeSource Node prefix) — `command -v automaton` resolves it.
+AUTOMATON_BIN="$(command -v automaton)"
+cat > /etc/systemd/system/titon-automaton.service <<EOF
+[Unit]
+Description=Titon automaton (operator daemon)
+Documentation=https://github.com/titon-network/automaton
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=$SVC_USER
+Group=$SVC_USER
+EnvironmentFile=/etc/automaton.env
+Environment=TITON_HOME=$STATE_DIR
+ExecStart=$AUTOMATON_BIN run
+
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=60
+# EXIT_LOCK_HELD = 75 — another instance already holds the lock.
+# Don't respawn-loop in that case.
+RestartPreventExitStatus=75
+
+# Hardening — match contrib/automaton.service.
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=$STATE_DIR
+PrivateTmp=true
+RestrictNamespaces=true
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+systemctl enable --now titon-automaton
+
+# 7. CLI wrapper for one-shot ops — `sudo automaton status`, `sudo automaton doctor`, etc.
+#    Runs as $SVC_USER with the same env the daemon sees. Must be invoked
+#    with sudo because /etc/automaton.env is root-only by design.
+cat > /usr/local/bin/automaton <<EOF
+#!/bin/bash
+set -euo pipefail
+if [ "\$(id -u)" != "0" ]; then
+    echo "automaton: must be run as root (try: sudo automaton ...)" >&2
+    exit 1
+fi
+. /etc/automaton.env
+exec sudo -u $SVC_USER env \\
+    AUTOMATON_PASSWORD="\$AUTOMATON_PASSWORD" \\
+    TITON_HOME=$STATE_DIR \\
+    "$AUTOMATON_BIN" "\$@"
+EOF
+chmod +x /usr/local/bin/automaton
+
+echo "[$(date -Is)] titon-automaton bootstrap complete"

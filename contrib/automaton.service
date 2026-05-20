@@ -1,0 +1,66 @@
+[Unit]
+Description=Titon Automaton — off-chain operator node
+Documentation=https://github.com/titon/automaton
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=automaton
+Group=automaton
+ExecStart=/usr/local/bin/automaton run
+Restart=on-failure
+RestartSec=10s
+
+# Exit code 75 (EX_TEMPFAIL) fires when another daemon already holds
+# the lockfile — don't respawn-loop in that case; wait for the other
+# instance to exit.
+RestartPreventExitStatus=75
+
+# Credentials. Create /etc/automaton.env (mode 0600, owner root) with:
+#   AUTOMATON_PASSWORD=<the keystore password>
+#   (optional) AUTOMATON_LOG_LEVEL=info
+#   (optional) AUTOMATON_METRICS_PORT=9090
+# The file is marked optional (leading `-`) so systemctl start won't
+# fail before the operator has written it — useful for first boot.
+EnvironmentFile=-/etc/automaton.env
+
+# Wallet + state persistence. Matches the default `TITON_HOME`.
+Environment=TITON_HOME=/var/lib/automaton
+StateDirectory=automaton
+StateDirectoryMode=0700
+
+# Sandbox. These defaults keep a compromised daemon from reading
+# anything beyond its own state + writing anywhere but /var/lib/automaton.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+PrivateTmp=true
+PrivateDevices=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+LockPersonality=true
+# MemoryDenyWriteExecute=true  # enable on kernels that support W^X
+#   — Node 22's V8 JIT works on most modern kernels, but any WASM path
+#     (pino's threading helpers, prom-client native backends on some
+#     builds) can SIGSEGV under this. Leave commented by default; flip
+#     on only after a load test on your exact kernel + libc.
+SystemCallArchitectures=native
+ReadWritePaths=/var/lib/automaton
+
+# Gracefully shut down — the daemon's SIGTERM handler drains in-flight
+# txs (default 30 s) before exiting. Give it a bit of headroom.
+TimeoutStopSec=60s
+KillMode=mixed
+KillSignal=SIGTERM
+
+# Logs land in systemd-journal by default; JSON output from pino is
+# picked up verbatim. Use `journalctl -u automaton -f` to tail.
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

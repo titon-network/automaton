@@ -1,0 +1,136 @@
+#!/bin/bash
+# Titon automaton — EC2 first-boot bootstrap.
+#
+# Installs Docker, drops the secrets-fetch helper at
+# /usr/local/sbin/titon-fetch-secrets (rendered separately by terraform
+# and base64-embedded here), writes a hardened systemd unit that wraps
+# `docker run` and re-runs the helper as ExecStartPre on every restart,
+# then starts the daemon.
+#
+# Hot rotation: `aws ssm put-parameter --overwrite ... && systemctl
+# restart titon-automaton` is enough to pick up a new password,
+# wallet.enc, or bls.enc — the ExecStartPre re-fetches every secret.
+# No `terraform apply` needed for credential rotation.
+#
+# Idempotent. Safe to re-run via `cloud-init clean && reboot` or by
+# invoking this script directly.
+#
+# All log output → /var/log/titon-automaton-bootstrap.log.
+
+set -euo pipefail
+exec > >(tee -a /var/log/titon-automaton-bootstrap.log) 2>&1
+echo "[$(date -Is)] titon-automaton bootstrap starting"
+
+STATE_DIR='${state_dir}'
+CONTAINER_NAME='${container_name}'
+AUTOMATON_IMAGE='${automaton_image}'
+
+# distroless/nodejs22-debian12:nonroot is UID 65532. Keep host
+# ownership of the bind-mounted state dir in sync so the container's
+# `nonroot` user can write to it.
+NONROOT_UID=65532
+
+# 1. Packages — Docker + jq. AWS CLI v2 is preinstalled on AL2023.
+#    Docker ships in AL2023 extras but is NOT enabled by default.
+dnf -y install docker jq
+
+# 2. Docker daemon — enable + start.
+systemctl enable --now docker
+
+# 3. State dir — the volume bind-mounted into the container.
+#    Inside the container TITON_HOME=/home/nonroot/.titon (set by the
+#    Dockerfile), so we mount STATE_DIR onto that path. The daemon
+#    expects $TITON_HOME/automaton/{wallet.enc,config.json,...}.
+mkdir -p "$STATE_DIR/automaton"
+chown -R "$NONROOT_UID:$NONROOT_UID" "$STATE_DIR"
+chmod 700 "$STATE_DIR"
+
+# 4. Drop the secrets-fetch helper — rendered by terraform via a
+#    second templatefile() call, base64-embedded so any character in
+#    rpc_api_key (or any future secret) survives intact.
+echo "[$(date -Is)] installing /usr/local/sbin/titon-fetch-secrets"
+echo "${fetch_secrets_b64}" | base64 -d > /usr/local/sbin/titon-fetch-secrets
+chmod 0700 /usr/local/sbin/titon-fetch-secrets
+chown root:root /usr/local/sbin/titon-fetch-secrets
+
+# 5. Initial fetch — populate $STATE_DIR + /etc/automaton.env so the
+#    daemon can start. Subsequent invocations come from systemd's
+#    ExecStartPre on every restart.
+echo "[$(date -Is)] running titon-fetch-secrets (initial)"
+/usr/local/sbin/titon-fetch-secrets
+
+# 6. Pre-pull the Docker image so failures surface in the bootstrap
+#    log instead of mid-`docker run`.
+echo "[$(date -Is)] pulling $AUTOMATON_IMAGE"
+docker pull "$AUTOMATON_IMAGE"
+
+# 7. systemd unit — wraps `docker run`. ExecStartPre re-runs
+#    titon-fetch-secrets on every restart so secrets rotated in SSM
+#    since the last start are picked up.
+cat > /etc/systemd/system/titon-automaton.service <<EOF
+[Unit]
+Description=Titon automaton (Docker)
+Documentation=https://github.com/titon-network/automaton
+After=docker.service network-online.target
+Requires=docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/automaton.env
+
+# Re-fetch every secret from SSM on each restart — picks up rotated
+# password, wallet.enc, bls.enc, config.json without a terraform-apply.
+ExecStartPre=/usr/local/sbin/titon-fetch-secrets
+
+# Belt-and-suspenders: stop any stale container left behind by a
+# previous run before starting a fresh one. Leading - means
+# non-zero exits are ignored.
+ExecStartPre=-/usr/bin/docker rm -f $CONTAINER_NAME
+
+ExecStart=/usr/bin/docker run \\
+    --rm \\
+    --name $CONTAINER_NAME \\
+    --read-only \\
+    --tmpfs /tmp \\
+    --cap-drop ALL \\
+    --security-opt no-new-privileges \\
+    -v $STATE_DIR:/home/nonroot/.titon \\
+    -e AUTOMATON_PASSWORD \\
+    -p 127.0.0.1:9090:9090 \\
+    -p 0.0.0.0:9091:9091 \\
+    -p 0.0.0.0:9092:9092 \\
+    $AUTOMATON_IMAGE \\
+    run
+
+ExecStop=/usr/bin/docker stop --time 30 $CONTAINER_NAME
+
+Restart=on-failure
+RestartSec=10
+TimeoutStartSec=120
+TimeoutStopSec=60
+RestartPreventExitStatus=75
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+systemctl enable --now titon-automaton
+
+# 8. Operator wrapper at /usr/local/bin/automaton — `sudo automaton
+#    status`, `sudo automaton stake register 10`, etc. Routes through
+#    the running container via `docker exec`, inheriting the
+#    container's AUTOMATON_PASSWORD env.
+cat > /usr/local/bin/automaton <<EOF
+#!/bin/bash
+set -euo pipefail
+if [ "\$(id -u)" != "0" ]; then
+    echo "automaton: must be run as root (try: sudo automaton ...)" >&2
+    exit 1
+fi
+exec /usr/bin/docker exec -i $CONTAINER_NAME /nodejs/bin/node /app/dist/cli/index.js "\$@"
+EOF
+chmod +x /usr/local/bin/automaton
+
+echo "[$(date -Is)] titon-automaton bootstrap complete"

@@ -13,22 +13,22 @@ importers:
         version: 1.9.7
       '@titon-network/atlas-sdk':
         specifier: ^0.5.0
-        version: 0.5.0(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/sandbox@0.41.0(@ton-community/func-js@0.11.0)(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/crypto@3.3.0)(@ton/test-utils@0.12.0(@jest/globals@30.3.0)(@ton/core@0.63.1(@ton/crypto@3.3.0)))(jest@30.3.0(@types/node@22.19.17)(ts-node@10.9.2(@types/node@22.19.17)(typescript@5.9.3))))
+        version: 0.5.0(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/sandbox@0.41.0(@ton-community/func-js@0.11.0)(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/crypto@3.3.0)(@ton/test-utils@0.12.0(@jest/globals@30.3.0)(@ton/core@0.63.1(@ton/crypto@3.3.0)))(jest@30.3.0(@types/node@22.19.17)(ts-node@10.9.2(@types/node@22.19.17)(typescript@6.0.3))))
       '@titon-network/forgeton-sdk':
         specifier: ^0.9.1
         version: 0.9.1(@ton/core@0.63.1(@ton/crypto@3.3.0))
       '@titon-network/fortuna-sdk':
         specifier: ^0.6.0
-        version: 0.6.0(@titon-network/atlas-sdk@0.5.0(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/sandbox@0.41.0(@ton-community/func-js@0.11.0)(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/crypto@3.3.0)(@ton/test-utils@0.12.0(@jest/globals@30.3.0)(@ton/core@0.63.1(@ton/crypto@3.3.0)))(jest@30.3.0(@types/node@22.19.17)(ts-node@10.9.2(@types/node@22.19.17)(typescript@5.9.3)))))(@titon-network/forgeton-sdk@0.9.1(@ton/core@0.63.1(@ton/crypto@3.3.0)))(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/sandbox@0.41.0(@ton-community/func-js@0.11.0)(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/crypto@3.3.0)(@ton/test-utils@0.12.0(@jest/globals@30.3.0)(@ton/core@0.63.1(@ton/crypto@3.3.0)))(jest@30.3.0(@types/node@22.19.17)(ts-node@10.9.2(@types/node@22.19.17)(typescript@5.9.3))))
+        version: 0.6.0(@titon-network/atlas-sdk@0.5.0(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/sandbox@0.41.0(@ton-community/func-js@0.11.0)(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/crypto@3.3.0)(@ton/test-utils@0.12.0(@jest/globals@30.3.0)(@ton/core@0.63.1(@ton/crypto@3.3.0)))(jest@30.3.0(@types/node@22.19.17)(ts-node@10.9.2(@types/node@22.19.17)(typescript@6.0.3)))))(@titon-network/forgeton-sdk@0.9.1(@ton/core@0.63.1(@ton/crypto@3.3.0)))(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/sandbox@0.41.0(@ton-community/func-js@0.11.0)(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/crypto@3.3.0)(@ton/test-utils@0.12.0(@jest/globals@30.3.0)(@ton/core@0.63.1(@ton/crypto@3.3.0)))(jest@30.3.0(@types/node@22.19.17)(ts-node@10.9.2(@types/node@22.19.17)(typescript@6.0.3))))
       '@titon-network/kronos-sdk':
         specifier: ^0.8.5
-        version: 0.8.5(@titon-network/forgeton-sdk@0.9.1(@ton/core@0.63.1(@ton/crypto@3.3.0)))(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/sandbox@0.41.0(@ton-community/func-js@0.11.0)(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/crypto@3.3.0)(@ton/test-utils@0.12.0(@jest/globals@30.3.0)(@ton/core@0.63.1(@ton/crypto@3.3.0)))(jest@30.3.0(@types/node@22.19.17)(ts-node@10.9.2(@types/node@22.19.17)(typescript@5.9.3))))
+        version: 0.8.5(@titon-network/forgeton-sdk@0.9.1(@ton/core@0.63.1(@ton/crypto@3.3.0)))(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/sandbox@0.41.0(@ton-community/func-js@0.11.0)(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/crypto@3.3.0)(@ton/test-utils@0.12.0(@jest/globals@30.3.0)(@ton/core@0.63.1(@ton/crypto@3.3.0)))(jest@30.3.0(@types/node@22.19.17)(ts-node@10.9.2(@types/node@22.19.17)(typescript@6.0.3))))
       '@titon-network/phoebe-sdk':
         specifier: ^0.4.0
-        version: 0.4.0(@titon-network/atlas-sdk@0.5.0(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/sandbox@0.41.0(@ton-community/func-js@0.11.0)(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/crypto@3.3.0)(@ton/test-utils@0.12.0(@jest/globals@30.3.0)(@ton/core@0.63.1(@ton/crypto@3.3.0)))(jest@30.3.0(@types/node@22.19.17)(ts-node@10.9.2(@types/node@22.19.17)(typescript@5.9.3)))))(@titon-network/forgeton-sdk@0.9.1(@ton/core@0.63.1(@ton/crypto@3.3.0)))(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/sandbox@0.41.0(@ton-community/func-js@0.11.0)(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/crypto@3.3.0)(@ton/test-utils@0.12.0(@jest/globals@30.3.0)(@ton/core@0.63.1(@ton/crypto@3.3.0)))(jest@30.3.0(@types/node@22.19.17)(ts-node@10.9.2(@types/node@22.19.17)(typescript@5.9.3))))
+        version: 0.4.0(@titon-network/atlas-sdk@0.5.0(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/sandbox@0.41.0(@ton-community/func-js@0.11.0)(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/crypto@3.3.0)(@ton/test-utils@0.12.0(@jest/globals@30.3.0)(@ton/core@0.63.1(@ton/crypto@3.3.0)))(jest@30.3.0(@types/node@22.19.17)(ts-node@10.9.2(@types/node@22.19.17)(typescript@6.0.3)))))(@titon-network/forgeton-sdk@0.9.1(@ton/core@0.63.1(@ton/crypto@3.3.0)))(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/sandbox@0.41.0(@ton-community/func-js@0.11.0)(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/crypto@3.3.0)(@ton/test-utils@0.12.0(@jest/globals@30.3.0)(@ton/core@0.63.1(@ton/crypto@3.3.0)))(jest@30.3.0(@types/node@22.19.17)(ts-node@10.9.2(@types/node@22.19.17)(typescript@6.0.3))))
       '@titon-network/themis-sdk':
         specifier: ^0.3.0
-        version: 0.3.0(d64055f3d2ba6ee069cc29121c523859)
+        version: 0.3.0(bbf7128c27a058921c90ba2ae0150604)
       '@ton/core':
         specifier: ^0.63.0
         version: 0.63.1(@ton/crypto@3.3.0)
@@ -37,7 +37,7 @@ importers:
         version: 3.3.0
       '@ton/sandbox':
         specifier: ^0.41.0
-        version: 0.41.0(@ton-community/func-js@0.11.0)(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/crypto@3.3.0)(@ton/test-utils@0.12.0(@jest/globals@30.3.0)(@ton/core@0.63.1(@ton/crypto@3.3.0)))(jest@30.3.0(@types/node@22.19.17)(ts-node@10.9.2(@types/node@22.19.17)(typescript@5.9.3)))
+        version: 0.41.0(@ton-community/func-js@0.11.0)(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/crypto@3.3.0)(@ton/test-utils@0.12.0(@jest/globals@30.3.0)(@ton/core@0.63.1(@ton/crypto@3.3.0)))(jest@30.3.0(@types/node@22.19.17)(ts-node@10.9.2(@types/node@22.19.17)(typescript@6.0.3)))
       '@ton/ton':
         specifier: ^15.3.0
         version: 15.4.0(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/crypto@3.3.0)
@@ -74,16 +74,16 @@ importers:
         version: 8.18.1
       jest:
         specifier: ^30.0.0
-        version: 30.3.0(@types/node@22.19.17)(ts-node@10.9.2(@types/node@22.19.17)(typescript@5.9.3))
+        version: 30.3.0(@types/node@22.19.17)(ts-node@10.9.2(@types/node@22.19.17)(typescript@6.0.3))
       ts-jest:
         specifier: ^29.1.0
-        version: 29.4.9(@babel/core@7.29.0)(@jest/transform@30.3.0)(@jest/types@30.3.0)(babel-jest@30.3.0(@babel/core@7.29.0))(jest-util@30.3.0)(jest@30.3.0(@types/node@22.19.17)(ts-node@10.9.2(@types/node@22.19.17)(typescript@5.9.3)))(typescript@5.9.3)
+        version: 29.4.9(@babel/core@7.29.0)(@jest/transform@30.3.0)(@jest/types@30.3.0)(babel-jest@30.3.0(@babel/core@7.29.0))(jest-util@30.3.0)(jest@30.3.0(@types/node@22.19.17)(ts-node@10.9.2(@types/node@22.19.17)(typescript@6.0.3)))(typescript@6.0.3)
       ts-node:
         specifier: ^10.9.0
-        version: 10.9.2(@types/node@22.19.17)(typescript@5.9.3)
+        version: 10.9.2(@types/node@22.19.17)(typescript@6.0.3)
       typescript:
-        specifier: ^5.5.0
-        version: 5.9.3
+        specifier: ^6.0.3
+        version: 6.0.3
 
 packages:
 
@@ -611,6 +611,7 @@ packages:
 
   '@ungap/structured-clone@1.3.0':
     resolution: {integrity: sha512-WmoN8qaIAo7WTYWbAZuG8PYEhn5fkz7dZrqTBZ7dtt//lL2Gwms1IcnQ5yHqjDfX8Ft5j4YzDM23f87zBfDe9g==}
+    deprecated: Potential CWE-502 - Update to 1.3.1 or higher
 
   '@unrs/resolver-binding-android-arm-eabi@1.11.1':
     resolution: {integrity: sha512-ppLRUgHVaGRWUx0R0Ut06Mjo9gBaBkg3v/8AxusGLhsIotbBLuRk51rAzqLC8gq6NyyAojEXglNjzf6R948DNw==}
@@ -1066,6 +1067,9 @@ packages:
 
   fflate@0.8.2:
     resolution: {integrity: sha512-cPJU47OaAoCbg0pBvzsgpTPhmhqI5eJjh/JIu8tPj5q+T7iLvW/JAYUqmE7KOB4R1ZyEhzBaIQpQpardBF5z8A==}
+
+  fflate@0.8.3:
+    resolution: {integrity: sha512-tbZNuJrLwGUp3zshBtdy4W+ORxZuIh8a5ilyIEQDC5rY1f3U20JMry0Ll3WBzU58EZKsEuJFXhb5gwv8CsPvgA==}
 
   find-up@4.1.0:
     resolution: {integrity: sha512-PpOwAdQ/YlXQ2vj8a3h8IipDuYRi3wceVQQGYWxNINccq40Anw7BlsEXCMbt1Zt+OLA6Fq9suIpIWD0OsnISlw==}
@@ -1827,8 +1831,8 @@ packages:
     resolution: {integrity: sha512-TeTSQ6H5YHvpqVwBRcnLDCBnDOHWYu7IvGbHT6N8AOymcr9PJGjc1GTtiWZTYg0NCgYwvnYWEkVChQAr9bjfwA==}
     engines: {node: '>=16'}
 
-  typescript@5.9.3:
-    resolution: {integrity: sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw==}
+  typescript@6.0.3:
+    resolution: {integrity: sha512-y2TvuxSZPDyQakkFRPZHKFm+KKVqIisdg9/CZwm9ftvKXLP8NRWj38/ODjNbr43SsoXqNuAisEf1GdCxqWcdBw==}
     engines: {node: '>=14.17'}
     hasBin: true
 
@@ -2159,7 +2163,7 @@ snapshots:
       jest-util: 30.3.0
       slash: 3.0.0
 
-  '@jest/core@30.3.0(ts-node@10.9.2(@types/node@22.19.17)(typescript@5.9.3))':
+  '@jest/core@30.3.0(ts-node@10.9.2(@types/node@22.19.17)(typescript@6.0.3))':
     dependencies:
       '@jest/console': 30.3.0
       '@jest/pattern': 30.0.1
@@ -2174,7 +2178,7 @@ snapshots:
       exit-x: 0.2.2
       graceful-fs: 4.2.11
       jest-changed-files: 30.3.0
-      jest-config: 30.3.0(@types/node@22.19.17)(ts-node@10.9.2(@types/node@22.19.17)(typescript@5.9.3))
+      jest-config: 30.3.0(@types/node@22.19.17)(ts-node@10.9.2(@types/node@22.19.17)(typescript@6.0.3))
       jest-haste-map: 30.3.0
       jest-message-util: 30.3.0
       jest-regex-util: 30.0.1
@@ -2385,55 +2389,55 @@ snapshots:
     dependencies:
       '@sinonjs/commons': 3.0.1
 
-  '@titon-network/atlas-sdk@0.5.0(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/sandbox@0.41.0(@ton-community/func-js@0.11.0)(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/crypto@3.3.0)(@ton/test-utils@0.12.0(@jest/globals@30.3.0)(@ton/core@0.63.1(@ton/crypto@3.3.0)))(jest@30.3.0(@types/node@22.19.17)(ts-node@10.9.2(@types/node@22.19.17)(typescript@5.9.3))))':
+  '@titon-network/atlas-sdk@0.5.0(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/sandbox@0.41.0(@ton-community/func-js@0.11.0)(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/crypto@3.3.0)(@ton/test-utils@0.12.0(@jest/globals@30.3.0)(@ton/core@0.63.1(@ton/crypto@3.3.0)))(jest@30.3.0(@types/node@22.19.17)(ts-node@10.9.2(@types/node@22.19.17)(typescript@6.0.3))))':
     dependencies:
       '@noble/curves': 1.9.7
       '@noble/hashes': 1.8.0
       '@ton/core': 0.63.1(@ton/crypto@3.3.0)
     optionalDependencies:
-      '@ton/sandbox': 0.41.0(@ton-community/func-js@0.11.0)(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/crypto@3.3.0)(@ton/test-utils@0.12.0(@jest/globals@30.3.0)(@ton/core@0.63.1(@ton/crypto@3.3.0)))(jest@30.3.0(@types/node@22.19.17)(ts-node@10.9.2(@types/node@22.19.17)(typescript@5.9.3)))
+      '@ton/sandbox': 0.41.0(@ton-community/func-js@0.11.0)(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/crypto@3.3.0)(@ton/test-utils@0.12.0(@jest/globals@30.3.0)(@ton/core@0.63.1(@ton/crypto@3.3.0)))(jest@30.3.0(@types/node@22.19.17)(ts-node@10.9.2(@types/node@22.19.17)(typescript@6.0.3)))
 
   '@titon-network/forgeton-sdk@0.9.1(@ton/core@0.63.1(@ton/crypto@3.3.0))':
     dependencies:
       '@ton/core': 0.63.1(@ton/crypto@3.3.0)
 
-  '@titon-network/fortuna-sdk@0.6.0(@titon-network/atlas-sdk@0.5.0(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/sandbox@0.41.0(@ton-community/func-js@0.11.0)(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/crypto@3.3.0)(@ton/test-utils@0.12.0(@jest/globals@30.3.0)(@ton/core@0.63.1(@ton/crypto@3.3.0)))(jest@30.3.0(@types/node@22.19.17)(ts-node@10.9.2(@types/node@22.19.17)(typescript@5.9.3)))))(@titon-network/forgeton-sdk@0.9.1(@ton/core@0.63.1(@ton/crypto@3.3.0)))(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/sandbox@0.41.0(@ton-community/func-js@0.11.0)(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/crypto@3.3.0)(@ton/test-utils@0.12.0(@jest/globals@30.3.0)(@ton/core@0.63.1(@ton/crypto@3.3.0)))(jest@30.3.0(@types/node@22.19.17)(ts-node@10.9.2(@types/node@22.19.17)(typescript@5.9.3))))':
+  '@titon-network/fortuna-sdk@0.6.0(@titon-network/atlas-sdk@0.5.0(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/sandbox@0.41.0(@ton-community/func-js@0.11.0)(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/crypto@3.3.0)(@ton/test-utils@0.12.0(@jest/globals@30.3.0)(@ton/core@0.63.1(@ton/crypto@3.3.0)))(jest@30.3.0(@types/node@22.19.17)(ts-node@10.9.2(@types/node@22.19.17)(typescript@6.0.3)))))(@titon-network/forgeton-sdk@0.9.1(@ton/core@0.63.1(@ton/crypto@3.3.0)))(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/sandbox@0.41.0(@ton-community/func-js@0.11.0)(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/crypto@3.3.0)(@ton/test-utils@0.12.0(@jest/globals@30.3.0)(@ton/core@0.63.1(@ton/crypto@3.3.0)))(jest@30.3.0(@types/node@22.19.17)(ts-node@10.9.2(@types/node@22.19.17)(typescript@6.0.3))))':
     dependencies:
       '@noble/curves': 1.9.7
       '@noble/hashes': 1.8.0
       '@ton/core': 0.63.1(@ton/crypto@3.3.0)
     optionalDependencies:
-      '@titon-network/atlas-sdk': 0.5.0(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/sandbox@0.41.0(@ton-community/func-js@0.11.0)(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/crypto@3.3.0)(@ton/test-utils@0.12.0(@jest/globals@30.3.0)(@ton/core@0.63.1(@ton/crypto@3.3.0)))(jest@30.3.0(@types/node@22.19.17)(ts-node@10.9.2(@types/node@22.19.17)(typescript@5.9.3))))
+      '@titon-network/atlas-sdk': 0.5.0(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/sandbox@0.41.0(@ton-community/func-js@0.11.0)(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/crypto@3.3.0)(@ton/test-utils@0.12.0(@jest/globals@30.3.0)(@ton/core@0.63.1(@ton/crypto@3.3.0)))(jest@30.3.0(@types/node@22.19.17)(ts-node@10.9.2(@types/node@22.19.17)(typescript@6.0.3))))
       '@titon-network/forgeton-sdk': 0.9.1(@ton/core@0.63.1(@ton/crypto@3.3.0))
-      '@ton/sandbox': 0.41.0(@ton-community/func-js@0.11.0)(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/crypto@3.3.0)(@ton/test-utils@0.12.0(@jest/globals@30.3.0)(@ton/core@0.63.1(@ton/crypto@3.3.0)))(jest@30.3.0(@types/node@22.19.17)(ts-node@10.9.2(@types/node@22.19.17)(typescript@5.9.3)))
+      '@ton/sandbox': 0.41.0(@ton-community/func-js@0.11.0)(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/crypto@3.3.0)(@ton/test-utils@0.12.0(@jest/globals@30.3.0)(@ton/core@0.63.1(@ton/crypto@3.3.0)))(jest@30.3.0(@types/node@22.19.17)(ts-node@10.9.2(@types/node@22.19.17)(typescript@6.0.3)))
 
-  '@titon-network/kronos-sdk@0.8.5(@titon-network/forgeton-sdk@0.9.1(@ton/core@0.63.1(@ton/crypto@3.3.0)))(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/sandbox@0.41.0(@ton-community/func-js@0.11.0)(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/crypto@3.3.0)(@ton/test-utils@0.12.0(@jest/globals@30.3.0)(@ton/core@0.63.1(@ton/crypto@3.3.0)))(jest@30.3.0(@types/node@22.19.17)(ts-node@10.9.2(@types/node@22.19.17)(typescript@5.9.3))))':
+  '@titon-network/kronos-sdk@0.8.5(@titon-network/forgeton-sdk@0.9.1(@ton/core@0.63.1(@ton/crypto@3.3.0)))(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/sandbox@0.41.0(@ton-community/func-js@0.11.0)(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/crypto@3.3.0)(@ton/test-utils@0.12.0(@jest/globals@30.3.0)(@ton/core@0.63.1(@ton/crypto@3.3.0)))(jest@30.3.0(@types/node@22.19.17)(ts-node@10.9.2(@types/node@22.19.17)(typescript@6.0.3))))':
     dependencies:
       '@ton/core': 0.63.1(@ton/crypto@3.3.0)
     optionalDependencies:
       '@titon-network/forgeton-sdk': 0.9.1(@ton/core@0.63.1(@ton/crypto@3.3.0))
-      '@ton/sandbox': 0.41.0(@ton-community/func-js@0.11.0)(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/crypto@3.3.0)(@ton/test-utils@0.12.0(@jest/globals@30.3.0)(@ton/core@0.63.1(@ton/crypto@3.3.0)))(jest@30.3.0(@types/node@22.19.17)(ts-node@10.9.2(@types/node@22.19.17)(typescript@5.9.3)))
+      '@ton/sandbox': 0.41.0(@ton-community/func-js@0.11.0)(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/crypto@3.3.0)(@ton/test-utils@0.12.0(@jest/globals@30.3.0)(@ton/core@0.63.1(@ton/crypto@3.3.0)))(jest@30.3.0(@types/node@22.19.17)(ts-node@10.9.2(@types/node@22.19.17)(typescript@6.0.3)))
 
-  '@titon-network/phoebe-sdk@0.4.0(@titon-network/atlas-sdk@0.5.0(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/sandbox@0.41.0(@ton-community/func-js@0.11.0)(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/crypto@3.3.0)(@ton/test-utils@0.12.0(@jest/globals@30.3.0)(@ton/core@0.63.1(@ton/crypto@3.3.0)))(jest@30.3.0(@types/node@22.19.17)(ts-node@10.9.2(@types/node@22.19.17)(typescript@5.9.3)))))(@titon-network/forgeton-sdk@0.9.1(@ton/core@0.63.1(@ton/crypto@3.3.0)))(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/sandbox@0.41.0(@ton-community/func-js@0.11.0)(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/crypto@3.3.0)(@ton/test-utils@0.12.0(@jest/globals@30.3.0)(@ton/core@0.63.1(@ton/crypto@3.3.0)))(jest@30.3.0(@types/node@22.19.17)(ts-node@10.9.2(@types/node@22.19.17)(typescript@5.9.3))))':
+  '@titon-network/phoebe-sdk@0.4.0(@titon-network/atlas-sdk@0.5.0(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/sandbox@0.41.0(@ton-community/func-js@0.11.0)(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/crypto@3.3.0)(@ton/test-utils@0.12.0(@jest/globals@30.3.0)(@ton/core@0.63.1(@ton/crypto@3.3.0)))(jest@30.3.0(@types/node@22.19.17)(ts-node@10.9.2(@types/node@22.19.17)(typescript@6.0.3)))))(@titon-network/forgeton-sdk@0.9.1(@ton/core@0.63.1(@ton/crypto@3.3.0)))(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/sandbox@0.41.0(@ton-community/func-js@0.11.0)(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/crypto@3.3.0)(@ton/test-utils@0.12.0(@jest/globals@30.3.0)(@ton/core@0.63.1(@ton/crypto@3.3.0)))(jest@30.3.0(@types/node@22.19.17)(ts-node@10.9.2(@types/node@22.19.17)(typescript@6.0.3))))':
     dependencies:
       '@noble/curves': 1.9.7
       '@noble/hashes': 1.8.0
       '@ton/core': 0.63.1(@ton/crypto@3.3.0)
     optionalDependencies:
-      '@titon-network/atlas-sdk': 0.5.0(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/sandbox@0.41.0(@ton-community/func-js@0.11.0)(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/crypto@3.3.0)(@ton/test-utils@0.12.0(@jest/globals@30.3.0)(@ton/core@0.63.1(@ton/crypto@3.3.0)))(jest@30.3.0(@types/node@22.19.17)(ts-node@10.9.2(@types/node@22.19.17)(typescript@5.9.3))))
+      '@titon-network/atlas-sdk': 0.5.0(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/sandbox@0.41.0(@ton-community/func-js@0.11.0)(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/crypto@3.3.0)(@ton/test-utils@0.12.0(@jest/globals@30.3.0)(@ton/core@0.63.1(@ton/crypto@3.3.0)))(jest@30.3.0(@types/node@22.19.17)(ts-node@10.9.2(@types/node@22.19.17)(typescript@6.0.3))))
       '@titon-network/forgeton-sdk': 0.9.1(@ton/core@0.63.1(@ton/crypto@3.3.0))
-      '@ton/sandbox': 0.41.0(@ton-community/func-js@0.11.0)(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/crypto@3.3.0)(@ton/test-utils@0.12.0(@jest/globals@30.3.0)(@ton/core@0.63.1(@ton/crypto@3.3.0)))(jest@30.3.0(@types/node@22.19.17)(ts-node@10.9.2(@types/node@22.19.17)(typescript@5.9.3)))
+      '@ton/sandbox': 0.41.0(@ton-community/func-js@0.11.0)(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/crypto@3.3.0)(@ton/test-utils@0.12.0(@jest/globals@30.3.0)(@ton/core@0.63.1(@ton/crypto@3.3.0)))(jest@30.3.0(@types/node@22.19.17)(ts-node@10.9.2(@types/node@22.19.17)(typescript@6.0.3)))
 
-  '@titon-network/themis-sdk@0.3.0(d64055f3d2ba6ee069cc29121c523859)':
+  '@titon-network/themis-sdk@0.3.0(bbf7128c27a058921c90ba2ae0150604)':
     dependencies:
       '@noble/ciphers': 1.3.0
       '@noble/curves': 1.9.7
       '@noble/hashes': 1.8.0
       '@ton/core': 0.63.1(@ton/crypto@3.3.0)
     optionalDependencies:
-      '@titon-network/atlas-sdk': 0.5.0(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/sandbox@0.41.0(@ton-community/func-js@0.11.0)(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/crypto@3.3.0)(@ton/test-utils@0.12.0(@jest/globals@30.3.0)(@ton/core@0.63.1(@ton/crypto@3.3.0)))(jest@30.3.0(@types/node@22.19.17)(ts-node@10.9.2(@types/node@22.19.17)(typescript@5.9.3))))
+      '@titon-network/atlas-sdk': 0.5.0(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/sandbox@0.41.0(@ton-community/func-js@0.11.0)(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/crypto@3.3.0)(@ton/test-utils@0.12.0(@jest/globals@30.3.0)(@ton/core@0.63.1(@ton/crypto@3.3.0)))(jest@30.3.0(@types/node@22.19.17)(ts-node@10.9.2(@types/node@22.19.17)(typescript@6.0.3))))
       '@titon-network/forgeton-sdk': 0.9.1(@ton/core@0.63.1(@ton/crypto@3.3.0))
-      '@titon-network/fortuna-sdk': 0.6.0(@titon-network/atlas-sdk@0.5.0(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/sandbox@0.41.0(@ton-community/func-js@0.11.0)(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/crypto@3.3.0)(@ton/test-utils@0.12.0(@jest/globals@30.3.0)(@ton/core@0.63.1(@ton/crypto@3.3.0)))(jest@30.3.0(@types/node@22.19.17)(ts-node@10.9.2(@types/node@22.19.17)(typescript@5.9.3)))))(@titon-network/forgeton-sdk@0.9.1(@ton/core@0.63.1(@ton/crypto@3.3.0)))(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/sandbox@0.41.0(@ton-community/func-js@0.11.0)(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/crypto@3.3.0)(@ton/test-utils@0.12.0(@jest/globals@30.3.0)(@ton/core@0.63.1(@ton/crypto@3.3.0)))(jest@30.3.0(@types/node@22.19.17)(ts-node@10.9.2(@types/node@22.19.17)(typescript@5.9.3))))
+      '@titon-network/fortuna-sdk': 0.6.0(@titon-network/atlas-sdk@0.5.0(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/sandbox@0.41.0(@ton-community/func-js@0.11.0)(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/crypto@3.3.0)(@ton/test-utils@0.12.0(@jest/globals@30.3.0)(@ton/core@0.63.1(@ton/crypto@3.3.0)))(jest@30.3.0(@types/node@22.19.17)(ts-node@10.9.2(@types/node@22.19.17)(typescript@6.0.3)))))(@titon-network/forgeton-sdk@0.9.1(@ton/core@0.63.1(@ton/crypto@3.3.0)))(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/sandbox@0.41.0(@ton-community/func-js@0.11.0)(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/crypto@3.3.0)(@ton/test-utils@0.12.0(@jest/globals@30.3.0)(@ton/core@0.63.1(@ton/crypto@3.3.0)))(jest@30.3.0(@types/node@22.19.17)(ts-node@10.9.2(@types/node@22.19.17)(typescript@6.0.3))))
 
   '@ton-community/func-js-bin@0.4.6-wasmfix.debugger.1': {}
 
@@ -2441,7 +2445,7 @@ snapshots:
     dependencies:
       '@ton-community/func-js-bin': 0.4.6-wasmfix.debugger.1
       arg: 5.0.2
-      fflate: 0.8.2
+      fflate: 0.8.3
 
   '@ton/core@0.63.1(@ton/crypto@3.3.0)':
     dependencies:
@@ -2457,7 +2461,7 @@ snapshots:
       jssha: 3.2.0
       tweetnacl: 1.0.3
 
-  '@ton/sandbox@0.41.0(@ton-community/func-js@0.11.0)(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/crypto@3.3.0)(@ton/test-utils@0.12.0(@jest/globals@30.3.0)(@ton/core@0.63.1(@ton/crypto@3.3.0)))(jest@30.3.0(@types/node@22.19.17)(ts-node@10.9.2(@types/node@22.19.17)(typescript@5.9.3)))':
+  '@ton/sandbox@0.41.0(@ton-community/func-js@0.11.0)(@ton/core@0.63.1(@ton/crypto@3.3.0))(@ton/crypto@3.3.0)(@ton/test-utils@0.12.0(@jest/globals@30.3.0)(@ton/core@0.63.1(@ton/crypto@3.3.0)))(jest@30.3.0(@types/node@22.19.17)(ts-node@10.9.2(@types/node@22.19.17)(typescript@6.0.3)))':
     dependencies:
       '@ton-community/func-js': 0.11.0
       '@ton/core': 0.63.1(@ton/crypto@3.3.0)
@@ -2469,7 +2473,7 @@ snapshots:
       ton-assembly: 0.6.1(@ton/core@0.63.1(@ton/crypto@3.3.0))
     optionalDependencies:
       '@ton/test-utils': 0.12.0(@jest/globals@30.3.0)(@ton/core@0.63.1(@ton/crypto@3.3.0))
-      jest: 30.3.0(@types/node@22.19.17)(ts-node@10.9.2(@types/node@22.19.17)(typescript@5.9.3))
+      jest: 30.3.0(@types/node@22.19.17)(ts-node@10.9.2(@types/node@22.19.17)(typescript@6.0.3))
 
   '@ton/test-utils@0.12.0(@jest/globals@30.3.0)(@ton/core@0.63.1(@ton/crypto@3.3.0))':
     dependencies:
@@ -2944,6 +2948,8 @@ snapshots:
 
   fflate@0.8.2: {}
 
+  fflate@0.8.3: {}
+
   find-up@4.1.0:
     dependencies:
       locate-path: 5.0.0
@@ -3141,15 +3147,15 @@ snapshots:
       - babel-plugin-macros
       - supports-color
 
-  jest-cli@30.3.0(@types/node@22.19.17)(ts-node@10.9.2(@types/node@22.19.17)(typescript@5.9.3)):
+  jest-cli@30.3.0(@types/node@22.19.17)(ts-node@10.9.2(@types/node@22.19.17)(typescript@6.0.3)):
     dependencies:
-      '@jest/core': 30.3.0(ts-node@10.9.2(@types/node@22.19.17)(typescript@5.9.3))
+      '@jest/core': 30.3.0(ts-node@10.9.2(@types/node@22.19.17)(typescript@6.0.3))
       '@jest/test-result': 30.3.0
       '@jest/types': 30.3.0
       chalk: 4.1.2
       exit-x: 0.2.2
       import-local: 3.2.0
-      jest-config: 30.3.0(@types/node@22.19.17)(ts-node@10.9.2(@types/node@22.19.17)(typescript@5.9.3))
+      jest-config: 30.3.0(@types/node@22.19.17)(ts-node@10.9.2(@types/node@22.19.17)(typescript@6.0.3))
       jest-util: 30.3.0
       jest-validate: 30.3.0
       yargs: 17.7.2
@@ -3160,7 +3166,7 @@ snapshots:
       - supports-color
       - ts-node
 
-  jest-config@30.3.0(@types/node@22.19.17)(ts-node@10.9.2(@types/node@22.19.17)(typescript@5.9.3)):
+  jest-config@30.3.0(@types/node@22.19.17)(ts-node@10.9.2(@types/node@22.19.17)(typescript@6.0.3)):
     dependencies:
       '@babel/core': 7.29.0
       '@jest/get-type': 30.1.0
@@ -3187,7 +3193,7 @@ snapshots:
       strip-json-comments: 3.1.1
     optionalDependencies:
       '@types/node': 22.19.17
-      ts-node: 10.9.2(@types/node@22.19.17)(typescript@5.9.3)
+      ts-node: 10.9.2(@types/node@22.19.17)(typescript@6.0.3)
     transitivePeerDependencies:
       - babel-plugin-macros
       - supports-color
@@ -3407,12 +3413,12 @@ snapshots:
       merge-stream: 2.0.0
       supports-color: 8.1.1
 
-  jest@30.3.0(@types/node@22.19.17)(ts-node@10.9.2(@types/node@22.19.17)(typescript@5.9.3)):
+  jest@30.3.0(@types/node@22.19.17)(ts-node@10.9.2(@types/node@22.19.17)(typescript@6.0.3)):
     dependencies:
-      '@jest/core': 30.3.0(ts-node@10.9.2(@types/node@22.19.17)(typescript@5.9.3))
+      '@jest/core': 30.3.0(ts-node@10.9.2(@types/node@22.19.17)(typescript@6.0.3))
       '@jest/types': 30.3.0
       import-local: 3.2.0
-      jest-cli: 30.3.0(@types/node@22.19.17)(ts-node@10.9.2(@types/node@22.19.17)(typescript@5.9.3))
+      jest-cli: 30.3.0(@types/node@22.19.17)(ts-node@10.9.2(@types/node@22.19.17)(typescript@6.0.3))
     transitivePeerDependencies:
       - '@types/node'
       - babel-plugin-macros
@@ -3783,18 +3789,18 @@ snapshots:
 
   ton-source-map@0.2.2: {}
 
-  ts-jest@29.4.9(@babel/core@7.29.0)(@jest/transform@30.3.0)(@jest/types@30.3.0)(babel-jest@30.3.0(@babel/core@7.29.0))(jest-util@30.3.0)(jest@30.3.0(@types/node@22.19.17)(ts-node@10.9.2(@types/node@22.19.17)(typescript@5.9.3)))(typescript@5.9.3):
+  ts-jest@29.4.9(@babel/core@7.29.0)(@jest/transform@30.3.0)(@jest/types@30.3.0)(babel-jest@30.3.0(@babel/core@7.29.0))(jest-util@30.3.0)(jest@30.3.0(@types/node@22.19.17)(ts-node@10.9.2(@types/node@22.19.17)(typescript@6.0.3)))(typescript@6.0.3):
     dependencies:
       bs-logger: 0.2.6
       fast-json-stable-stringify: 2.1.0
       handlebars: 4.7.9
-      jest: 30.3.0(@types/node@22.19.17)(ts-node@10.9.2(@types/node@22.19.17)(typescript@5.9.3))
+      jest: 30.3.0(@types/node@22.19.17)(ts-node@10.9.2(@types/node@22.19.17)(typescript@6.0.3))
       json5: 2.2.3
       lodash.memoize: 4.1.2
       make-error: 1.3.6
       semver: 7.7.4
       type-fest: 4.41.0
-      typescript: 5.9.3
+      typescript: 6.0.3
       yargs-parser: 21.1.1
     optionalDependencies:
       '@babel/core': 7.29.0
@@ -3803,7 +3809,7 @@ snapshots:
       babel-jest: 30.3.0(@babel/core@7.29.0)
       jest-util: 30.3.0
 
-  ts-node@10.9.2(@types/node@22.19.17)(typescript@5.9.3):
+  ts-node@10.9.2(@types/node@22.19.17)(typescript@6.0.3):
     dependencies:
       '@cspotcode/source-map-support': 0.8.1
       '@tsconfig/node10': 1.0.12
@@ -3817,7 +3823,7 @@ snapshots:
       create-require: 1.1.1
       diff: 4.0.4
       make-error: 1.3.6
-      typescript: 5.9.3
+      typescript: 6.0.3
       v8-compile-cache-lib: 3.0.1
       yn: 3.1.1
 
@@ -3832,7 +3838,7 @@ snapshots:
 
   type-fest@4.41.0: {}
 
-  typescript@5.9.3: {}
+  typescript@6.0.3: {}
 
   uglify-js@3.19.3:
     optional: true
